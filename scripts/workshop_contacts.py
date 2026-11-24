@@ -14,7 +14,8 @@ from mathutils.bvhtree import BVHTree
 def build_tree(scene):
     vertices, polygons = [], []
     for obj in scene.objects:
-        if obj.type != 'MESH' or (obj.parent and obj.parent.name == 'Projects_CRT_Swivel'):
+        parent_name=obj.parent.name if obj.parent else ''
+        if obj.type != 'MESH' or parent_name in {'Projects_CRT_Swivel','Signal_Spinner'} or parent_name.startswith('Drop_'):
             continue
         start = len(vertices)
         vertices.extend(obj.matrix_world @ vertex.co for vertex in obj.data.vertices)

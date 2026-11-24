@@ -103,6 +103,19 @@ export function createAudio() {
         tone(t, 168, 54, 0.12, 0.38 * force);
         rattle(t, 980, 0.041, 0.31 * force);
         break;
+      case 'drop-target':
+        rattle(t, 1680, .038, .26 * force);
+        tone(t + .015, 260, 125, .077, .17 * force, 'triangle');
+        break;
+      case 'spinner':
+        for (let i = 0; i < 4; i++) {
+          rattle(t + i * .023 + i * i * .002, 2450, .018, (.16 - i * .027) * force);
+        }
+        break;
+      case 'rollover':
+        tone(t, 660, 650, .13, .11 * force);
+        tone(t + .008, 1320, 1296, .066, .048 * force);
+        break;
       case 'rail':
         tone(t, 1270, 1080, 0.081, 0.14 * force);
         rattle(t, 2700, 0.024, 0.22 * force);

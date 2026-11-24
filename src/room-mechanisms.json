@@ -1,0 +1,28 @@
+{
+  "dropBank": {
+    "width": 0.044,
+    "depth": 0.011,
+    "height": 0.053,
+    "normal": [0.735, 0.678],
+    "tangent": [0.678, -0.735],
+    "targets": [
+      { "id": "telegraph-1", "node": "Drop_1", "x": -0.447, "z": 0.244 },
+      { "id": "telegraph-2", "node": "Drop_2", "x": -0.411, "z": 0.205 },
+      { "id": "telegraph-3", "node": "Drop_3", "x": -0.375, "z": 0.166 }
+    ]
+  },
+  "spinner": {
+    "id": "signal-spinner",
+    "node": "Signal_Spinner",
+    "x": 0.007,
+    "z": -0.520,
+    "width": 0.111,
+    "axisHeight": 0.080,
+    "posts": [[-0.057, -0.520], [0.071, -0.520]],
+    "postRadius": 0.006
+  },
+  "rollovers": [
+    { "id": "route-west", "node": "Rollover_West", "material": "rollover_west", "x": -0.142, "z": 0.365, "radius": 0.021 },
+    { "id": "route-east", "node": "Rollover_East", "material": "rollover_east", "x": 0.075, "z": 0.366, "radius": 0.021 }
+  ]
+}

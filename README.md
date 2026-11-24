@@ -19,8 +19,10 @@ Run `npm test` for the physics regression suite. Use `npm run build` and `npm ru
 
 - Drag the ball against the spring, then release. On a keyboard, hold and release Space to launch and press the arrow keys to flip. Touch devices have left and right flipper buttons.
 - In Explore mode, take a destination shot or select its labeled entrance on the cabinet. In Play mode, a shot lights its destination and leaves the ball in play.
+- Knock down all three telegraph blades to light the bank inserts and score a 500-point bonus. The rear spinner and two rollover arrows also score when the ball crosses them.
 - At the desk, add a $500 deposit on the monitor and compare the balance and time-weighted return. Use the physical Experience switch to continue to the archive.
-- Select a job card to read its entry. Return to the flippers and choose **Resume ball** to continue an interrupted game.
+- Select a job card to read its entry. Both stations have a return plunger beside the ball cup. Pull the handle away from the cup and release it to send the ball back through its entrance into free play. Space also charges the station spring.
+- To restore the exact shot you left, use **Back to the flippers** and **Resume ball**.
 - The workshop guide provides keyboard access to destinations, station controls, and the résumé. Direct links include `/#projects/cline-financial` and `/#experience`. Reduced motion skips camera travel. The sound control enables the synthesized machine audio.
 
 ## Scene and mechanics
@@ -32,7 +34,7 @@ python scripts/paint_workshop.py
 blender --background --python scripts/build_workshop.py
 ```
 
-`src/room-layout.json` defines shared dimensions, pivots, and rail paths in metres. The Blender generator and runtime both read it. Rapier simulates free play on the deck. Guided paths carry the ball through the launch channel and between room stations. Three.js draws the room, follows the ball, and maps pointer input to physical objects. The monitor, switch, and archive content are in `src/room-stations.js`.
+`src/room-layout.json` and `src/room-mechanisms.json` define shared dimensions, pivots, and rail paths in metres. The Blender generator and runtime both read them. Rapier simulates free play on the deck. Guided paths carry the ball through the launch channel and between room stations. Three.js draws the room, follows the ball, and maps pointer input to physical objects. `src/room-camera.js` fits the whole cabinet in landscape and follows the rails between stations. The monitor, switches, and archive content are in `src/room-stations.js`.
 
 ## Review deployment
 

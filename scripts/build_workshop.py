@@ -20,6 +20,7 @@ sys.path.insert(0,str(ROOT/'scripts'))
 from workshop_contacts import bake_contacts, brushed_bells
 
 LAYOUT=json.loads((ROOT/'src/room-layout.json').read_text())
+MECHANISMS=json.loads((ROOT/'src/room-mechanisms.json').read_text())
 TEXTURES=ROOT/'output/workshop-textures'
 if not (TEXTURES/'field.jpg').exists():
     raise RuntimeError('Run python scripts/paint_workshop.py before the Blender build.')
@@ -75,6 +76,8 @@ for spec in [
 ]:material(*spec)
 for name in ('projects','experience','resume','pull','play','explore','maker','archive','score'):
     material('print_'+name,'ffffff',.62,.05,.11,name+'.png')
+material('rollover_west','e2be6c',.34,.12,.18)
+material('rollover_east','8cb59d',.34,.12,.18)
 
 def collection(name):
     global COL
@@ -330,6 +333,80 @@ def tracks(points,id):
             if barrier<.5:
                 lathe('Crossing pedestal',(p.x,.005,p.z),[(0,.103),(.032,.103),(.048,.073),(.12,.052),(.165,.036)],'bronze')
 
+def cabinet_cheeks():
+    """A pair of physical flipper buttons and pinstriped service panels on the outer cheeks."""
+    for sign,side in [(-1,'Left'),(1,'Right')]:
+        x=sign*.569
+        for offset,finish in [(0,'deepTeal'),(.012,'honey'),(.020,'oxblood')]:
+            points=[(x,.673+offset,-.82),(x,.674+offset,-.31),
+                    (x,.688+offset,-.04),(x,.724+offset,.17),(x,.730+offset,.43)]
+            tube('Coach line',smooth_path(points,4),.005 if not offset else .0025,finish,6)
+        z=.57;y=deck(z)-.112
+        rod('Flipper ferrule',(x-sign*.009,y,z),(x+sign*.009,y,z),.037,'bronze',32)
+        rod('Painted button cup',(x+sign*.007,y,z),(x+sign*.012,y,z),.032,'well',28)
+        with group(mark('Cabinet_Button_'+side,(x,y,z))):
+            rod('Side flipper button',(x+sign*.010,y,z),(x+sign*.025,y,z),.027,'oxblood',28)
+
+
+def telegraph_bank():
+    bank=MECHANISMS['dropBank']
+    facing=P((bank['normal'][0],0,bank['normal'][1])).normalized()
+    across=P((bank['tangent'][0],0,bank['tangent'][1])).normalized()
+    up=P((0,1,0));heading=math.atan2(facing.x,facing.z)
+    w,d,h=bank['width'],bank['depth'],bank['height']
+    for i,target in enumerate(bank['targets']):
+        x,z=target['x'],target['z']
+        p=P((x,deck(z),z))
+        box('Target socket plate',p+up*.002,(w+.006,.004,d+.018),'bronze',.0015,yaw=heading)
+        box('Dark drop slot',p+up*.0045,(w+.002,.002,d+.006),'well',.0008,yaw=heading)
+        for end in [-1,1]:
+            screw_at=p+across*(w*.38*end)-facing*.010
+            screw(screw_at.x,p.y+.005,screw_at.z,.0023)
+        # The face, markings and a bevelled coloured cap all travel into the slot.
+        with group(mark(target['node'],p)):
+            box('Porcelain blade',p+up*(h*.51),(w,h*.98,d),'enamel',.0032,yaw=heading)
+            box('Telegraph cap',p+up*(h-.008),(w+.001,.013,d+.001),['oxblood','deepTeal','bronze'][i],.002,yaw=heading)
+            for mark_index in range(i+1):
+                center=p+across*((mark_index-i/2)*.0064)+up*(h*.50)+facing*(d*.52)
+                box('Signal tally',center,(.0031,.018,.0018),'deepTeal',.0007,yaw=heading)
+            underline=p+up*(h*.23)+facing*(d*.52)
+            box('Signal underline',underline,(w*.56,.0015,.0013),'bronze',.0005,yaw=heading)
+
+
+def signal_spinner():
+    config=MECHANISMS['spinner'];x,z=config['x'],config['z']
+    pivot=P((x,deck(z)+config['axisHeight'],z));up=P((0,1,0))
+    for xx,zz in config['posts']:
+        low=deck(zz)
+        cyl('Spinner post footing',(xx,low+.003,zz),.010,.006,'bronze')
+        rod('Spinner upright',(xx,low+.003,zz),(xx,pivot.y,zz),config['postRadius'],'brass',14)
+        rod('Axle bush',(xx-.005,pivot.y,zz),(xx+.005,pivot.y,zz),.0085,'bronze',16)
+    with group(mark(config['node'],pivot)):
+        rod('Signal shaft',pivot-P((.071,0,0)),pivot+P((.071,0,0)),.0033,'steel',12)
+        box('Semaphore pennant',pivot-up*.022,(config['width'],.051,.0065),'bronze',.0030)
+        for sign,paint in [(1,'deepTeal'),(-1,'oxblood')]:
+            c=pivot-up*.023+P((0,0,sign*.0038))
+            plane('Enamel flag',c,(sign*.102,0,0),(0,.038,0),paint)
+            for k in range(3):
+                center=c+P((sign*(k-1)*.025,0,sign*.001))
+                raw('Semaphore chevron',[center+P((sign*a,b,0)) for a,b in [
+                    (-.009,-.010),(-.002,-.010),(.009,0),(-.002,.010),(-.009,.010),(.002,0)
+                ]],[(0,1,2,5),(2,3,4,5)],'enamel')
+        for offset in [-.037,.037]:
+            rod('Folded pennant loop',pivot+P((offset-.006,0,0)),pivot+P((offset+.006,0,0)),.0055,'brass',12)
+
+
+def lane_rollovers():
+    for lens in MECHANISMS['rollovers']:
+        x,z,r=lens['x'],lens['z'],lens['radius'];y=deck(z)
+        with group(mark(lens['node'],(x,y,z))):
+            cyl('Inlaid lens bezel',(x,y+.0016,z),r,.003,'bronze',28)
+            cyl('Smoked signal glass',(x,y+.0032,z),r*.84,.0027,'deepTeal',28)
+            pts=[(x+a*r,y+.0050-(b*r)*.065,z+b*r) for a,b in [
+                (-.54,.39),(-.12,.39),(-.12,.58),(.16,.58),(.16,.39),(.54,.39),(0,-.63)]]
+            raw('Rollover arrow',pts,[(0,1,5,6),(1,2,3,4),(1,4,5)],lens['material'])
+
+
 def cabinet():
     collection('01 • Signal cabinet')
     # The bevelled rim has a physical break at each outgoing rail.
@@ -350,8 +427,10 @@ def cabinet():
         for z in [-.78,.78]:
             rod('Tapered walnut leg',(x*1.1,.041,z*1.05),(x,.76,z),.038,'walnut',12)
             cyl('Leveling foot',(x*1.1,.026,z*1.05),.046,.046,'bronze')
+    cabinet_cheeks()
     for id in ['projects','experience']:gate(id)
     collection('02 • Mechanical playfield')
+    telegraph_bank();signal_spinner();lane_rollovers()
     for rail in LAYOUT['rails']:
         coords=rail['points'];pts=[(x,deck(z)+.027,z) for x,z in coords];r=rail['radius']
         sling='sling' in rail['id'];ret='return' in rail['id']
@@ -425,19 +504,82 @@ def cabinet():
         plaque('Mechanical score window',(0,1.165,-.857),.263,.069,'print_score')
         for x in [-.105,.105]:rod('Score bracket',(x,1.03,-.888),(x,1.12,-.888),.009,'brass')
 
+def spring_axes(station):
+    path=LAYOUT['routes'][station]
+    origin=P(path[-1]);axis=origin-P(path[-2]);axis.y=0;axis.normalize()
+    across=P((axis.z,0,-axis.x))
+    return origin,axis,across
+
+
+def return_cup_shell(station):
+    origin,axis,across=spring_axes(station)
+    # Two formed cheeks retain the arriving ball. A full ball-width trough through the
+    # centre lets it follow the return shoe all the way to its compressed position.
+    profile=[(-.051,.047),(-.047,.055),(.005,.055),(.009,.052),(.007,.048),(-.016,.042),(-.034,.027)]
+    for start in [37,217]:
+        verts=[];faces=[]
+        for i in range(22):
+            a=math.radians(start+106*i/21);radial=axis*math.cos(a)+across*math.sin(a)
+            for y,r in profile:verts.append(origin+radial*r+P((0,y,0)))
+            if i:
+                for j in range(len(profile)-1):
+                    k=(i-1)*len(profile)+j
+                    faces.append((k,k+1,k+len(profile)+1,k+len(profile)))
+        n=len(profile)
+        faces.append(tuple(reversed(range(n))))
+        faces.append(tuple(range(len(verts)-n,len(verts))))
+        raw('Slotted tipping cup',verts,faces,'brass',True)
+    cyl('Turned cup sole',origin-P((0,.049,0)),.048,.015,'bronze',28)
+    cyl('Pocket lining',origin-P((0,.038,0)),.037,.006,'woodDark',28)
+
+
+def return_spring_mount(station):
+    origin,axis,across=spring_axes(station)
+    y_axis=P((0,1,0));end=origin+axis*.153;heading=math.atan2(axis.x,axis.z)
+    root=mark('Spring_Mount_'+station.capitalize(),end)
+    root.rotation_euler.z=heading;bpy.context.view_layer.update()
+    with group(root):
+        for sign in [-1,1]:
+            offset=across*(.014*sign)-y_axis*.0215
+            rod('Return ball guide',origin+offset+axis*.011,origin+offset+axis*.115,.0032,'steel',10)
+        for t in [.063,.106]:
+            point=origin+axis*t-y_axis*.028
+            rod('Guide tie',point-across*.023,point+across*.023,.004,'bronze',8)
+        seat=end.copy();seat.y=.908
+        box('Plunger chassis',seat,(.067,.014,.082),'walnut',.004,yaw=heading)
+        # A bored bronze bearing supports the moving shaft. Its bore is deliberately open.
+        verts=[];faces=[]
+        profile=[(-.013,.012),(-.013,.024),(-.007,.027),(.010,.025),(.014,.021),(.014,.012)]
+        for i in range(28):
+            a=i*math.tau/28;ring=across*math.cos(a)+y_axis*math.sin(a)
+            verts.extend(end+axis*t+ring*r for t,r in profile)
+        n=len(profile)
+        for i in range(28):
+            for j in range(n):
+                k=i*n+j;side=(i+1)%28*n
+                faces.append((k,side+j,side+(j+1)%n,i*n+(j+1)%n))
+        raw('Plunger shaft bearing',verts,faces,'brass',True)
+        for sign in [-1,1]:
+            offset=across*(.021*sign)
+            rod('Spring bracket',seat+offset,end+offset-y_axis*.015,.006,'bronze',10)
+            at=seat+offset+axis*.021
+            screw(at.x,seat.y+.008,at.z,.004)
+    return root
+
+
 def cup_assembly(name,landing,linked=False):
     x,y,z=landing
     pivot=mark(name,(x,y-.048,z))
+    station='experience' if linked else 'projects'
     with group(pivot):
-        # An open concave brass cup cradles the centre of the moving steel ball.
-        rings=[(.0,.028),(.010,.032),(.012,.051),(.017,.055),(.071,.055),(.074,.052),(.071,.048),(.044,.041),(.030,.022),(.028,.001)]
-        bowl=lathe('Counterweight cup',(x,y-.064,z),rings,'brass',32)
+        return_cup_shell(station)
         rod('Pivot axle',(x-.072,y-.031,z),(x+.070,y-.031,z),.009,'bronze',12)
     for dx in [-.064,.064]:
         box('Pivot pedestal',(x+dx,.915+(y-.031-.915)/2,z),(.015,max(.026,y-.031-.915),.044),'bronze',.006)
     if linked:
         tube('Card lift arm',[(x+.055,y-.027,z),(x+.14,y+.006,z-.028),(x+.25,y+.018,z-.133)],.009,'brass',10)
         rod('Push rod',(x+.25,y+.018,z-.133),(x+.25,1.151,-1.006),.008,'brassEdge',10)
+    return_spring_mount(station)
     return pivot
 
 def mug(x,y,z,scale=1):
@@ -638,6 +780,13 @@ def proof_actors():
         z=p.z+r+.145*t
         coil.append((p.x+math.cos(a)*.017,deck(z)+r+math.sin(a)*.017,z))
     tube('Resting launch spring',coil,.0033,'brassEdge',8)
+    for station in ('projects','experience'):
+        origin,axis,across=spring_axes(station);up=P((0,1,0))
+        coil=[origin+axis*(.027+.114*i/100)+.0123*(across*math.cos(i*math.tau/10)+up*math.sin(i*math.tau/10)) for i in range(101)]
+        tube('Reference return coil',coil,.0022,'brassEdge',7)
+        rod('Reference return shoe',origin+axis*.022,origin+axis*.029,.014,'enamel',20)
+        rod('Reference pull shaft',origin+axis*.026,origin+axis*.194,.0037,'steel',10)
+        rod('Reference plunger handle',origin+axis*.184,origin+axis*.210,.015,'oxblood',20)
 
 def proof_camera_and_lights():
     collection('06 • Blender proof lighting and camera')

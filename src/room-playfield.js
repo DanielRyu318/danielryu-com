@@ -1,5 +1,6 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 import { ROOM_LAYOUT as layout, surfaceY } from './room-layout.js';
+import mechanisms from './room-mechanisms.json' with { type: 'json' };
 
 export const ROOM_STEP = 1 / 180;
 const deckPitch = Math.atan(layout.deck.slope);
@@ -48,6 +49,29 @@ export async function createPlayfield(onImpact) {
     make(collider.cylinder(0.044, bumper.radius).setTranslation(bumper.x, surfaceY(bumper.z) + 0.032, bumper.z)
       .setRestitution(0.8).setFriction(0.12), { type: 'bumper', ...bumper });
   }
+  const drops = new Map();
+  const bank = mechanisms.dropBank;
+  const yaw = -Math.atan2(bank.tangent[1], bank.tangent[0]);
+  for (const target of bank.targets) {
+    const plate = collider.cuboid(bank.width / 2, bank.height / 2, bank.depth / 2)
+      .setTranslation(target.x, surfaceY(target.z) + bank.height / 2, target.z)
+      .setRotation(axesRotation(yaw)).setRestitution(0.54);
+    drops.set(target.id, make(plate, { type: 'drop', id: target.id }));
+  }
+  const wheel = mechanisms.spinner;
+  make(collider.cuboid(wheel.width / 2, wheel.axisHeight / 2, 0.003)
+    .setTranslation(wheel.x, surfaceY(wheel.z) + wheel.axisHeight / 2, wheel.z)
+    .setSensor(true), { type: 'spinner', id: wheel.id });
+  for (const [x,z] of wheel.posts) {
+    make(collider.cylinder(wheel.axisHeight / 2, wheel.postRadius)
+      .setTranslation(x, surfaceY(z) + wheel.axisHeight / 2, z)
+      .setRestitution(0.58), { type: 'rail', id: wheel.id + '-post-' + x });
+  }
+  for (const insert of mechanisms.rollovers) {
+    make(collider.cylinder(0.013, insert.radius)
+      .setTranslation(insert.x, surfaceY(insert.z) + 0.012, insert.z)
+      .setSensor(true), { type: 'rollover', id: insert.id });
+  }
   const bats = {};
   for (const f of layout.flippers) {
     const body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased()
@@ -87,6 +111,7 @@ export async function createPlayfield(onImpact) {
     const scale = Math.hypot(dx, dz);
     if (scale) ball.setLinvel({ x: v.x + dx * 0.82 / scale, y: v.y, z: v.z + dz * 0.82 / scale }, true);
   }
-  return { setBall, snapshot, step, kick, position: () => copy(ball.translation()), park: () => ball.setEnabled(false),
+  return { setBall, snapshot, step, kick, setDropRaised: (id, raised) => drops.get(id)?.setEnabled(raised),
+    position: () => copy(ball.translation()), park: () => ball.setEnabled(false),
     dispose() { events.free(); world.free(); } };
 }

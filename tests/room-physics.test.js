@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ROOM_LAYOUT as layout, surfaceY } from '../src/room-layout.js';
+import { ROOM_LAYOUT as layout, returnSpring, surfaceY } from '../src/room-layout.js';
+import hardware from '../src/room-mechanisms.json' with { type: 'json' };
 import { createPlayfield, ROOM_STEP } from '../src/room-playfield.js';
 import { createRoomPhysics, crossedRoomGate } from '../src/room-physics.js';
-import { railPath } from '../src/room-path.js';
+import { railPath, xyz } from '../src/room-path.js';
+import { roomRoute } from '../src/room-routes.js';
 
 async function machine(t, onEvent) {
   const game = await createRoomPhysics({ onEvent });
@@ -19,6 +21,16 @@ function playFlippers(game) {
   else { game.flip('left', false); game.flip('right', false); }
 }
 function close(a, b, delta = 0.0002) { assert.ok(Math.abs(a - b) < delta, `${a} should equal ${b}`); }
+
+function finishRailTrip(game) {
+  let ticks = 0;
+  while (game.state.travel && ticks < 1800) {
+    ticks++;
+    game.update(ROOM_STEP);
+  }
+  assert.equal(game.state.travel, null, 'ball must clear the rail within ten seconds');
+  return ticks * ROOM_STEP;
+}
 
 test('launcher and Experience have more than a ball diameter of vertical clearance at the crossing', () => {
   const launch = railPath(layout.launcher.path), exit = railPath(layout.routes.experience);
@@ -137,12 +149,24 @@ test('redirects settle old navigation promises and Back returns an unplayed ball
   frames(game, 20);
   const redirect = game.goTo('experience');
   assert.equal(await original, false);
-  frames(game, 240);
+  finishRailTrip(game);
   assert.equal(await redirect, true);
   assert.equal(game.state.station, 'experience');
   await game.goTo('table', {instant:true});
   assert.equal(game.state.mode, 'ready');
   assert.equal(game.state.stats.launches, 0);
+});
+
+test('interrupting the automatic stroke releases the flipper before the next ball', async t => {
+  const game = await machine(t);
+  const interrupted = game.goTo('experience');
+  for (let ticks = 0; ticks < 900 && !game.state.flippers.left.held; ticks++) game.update(ROOM_STEP);
+  assert.equal(game.state.flippers.left.held, true);
+  await game.goTo('table', { instant:true });
+  assert.equal(await interrupted, false);
+  frames(game, 15);
+  assert.equal(game.state.flippers.left.held, false);
+  assert.equal(game.state.flippers.left.angle, layout.flippers[0].rest);
 });
 
 test('the rear rail directly connects both desks in either direction', async t => {
@@ -151,10 +175,12 @@ test('the rear rail directly connects both desks in either direction', async t =
   for (const destination of ['experience','projects']) {
     const journey = game.goTo(destination);
     assert.equal(game.state.travel.crossing, true);
-    while (game.state.travel.progress < 0.49) game.update(1 / 60);
+    let ticks = 0;
+    while (game.state.travel.progress < 0.49 && ticks < 1800) { game.update(ROOM_STEP); ticks++; }
     assert.ok(game.state.ball.z < -1.20);
     assert.ok(Math.abs(game.state.ball.x) < 0.20);
-    frames(game, 180);
+    const seconds = ticks * ROOM_STEP + finishRailTrip(game);
+    assert.ok(seconds > 2.7 && seconds < 3.3, `crossing took ${seconds}s`);
     assert.equal(await journey, true);
     assert.equal(game.state.station, destination);
   }
@@ -168,4 +194,136 @@ test('a launch produces the same Rapier trajectory at 30 and 144 render frames p
   }
   assert.deepEqual(a.state.ball, b.state.ball);
   assert.equal(a.state.score, b.state.score);
+});
+
+test('automatic shots enter both gates on the exposed wire tangent and continue along the modeled track', () => {
+  for (const id of Object.keys(layout.gates)) {
+    const { path, gateDistance, lipDistance } = roomRoute({
+      from: 'table', to: id, position: xyz(layout.launcher.path[0]), atCradle: true
+    });
+    const wire = railPath(layout.routes[id]);
+    assert.ok(gateDistance > 0 && gateDistance < lipDistance && lipDistance < path.length);
+    const atGate = path.at(gateDistance / path.length);
+    const previous = path.at((gateDistance - .007) / path.length);
+    const next = path.at((gateDistance + .007) / path.length);
+    const [dx, dz] = layout.gates[id].direction;
+    for (const [start, end] of [[previous, atGate], [atGate, next]]) {
+      const x = end.x - start.x, z = end.z - start.z;
+      assert.ok((x * dx + z * dz) / Math.hypot(x, z) > .96);
+    }
+    for (const fraction of [0, .1, .4, .9, 1]) {
+      const actual = path.at((gateDistance + fraction * wire.length) / path.length);
+      const expected = wire.at(fraction);
+      for (const axis of ['x','y','z']) close(actual[axis], expected[axis], 1e-8);
+    }
+  }
+});
+
+test('the local plunger at each station cancels cleanly and shoots a live ball through its own entrance', async t => {
+  for (const id of Object.keys(layout.gates)) {
+    const spring = returnSpring(id);
+    const runs = [];
+    for (const power of [.1, 1]) {
+      const game = await machine(t);
+      await game.goTo(id, { instant: true });
+      game.setPull(.8);
+      assert.equal(game.state.mode, 'station-pulling');
+      const pulled = spring.origin.map((value, i) => value + spring.direction[i] * spring.stroke * .8);
+      assert.deepEqual(game.state.ball, xyz(pulled));
+      assert.equal(game.cancelPull(), true);
+      assert.deepEqual(game.state.ball, xyz(spring.origin));
+      assert.equal(game.state.mode, 'station');
+      game.setPull(power);
+      assert.equal(game.release(), true);
+      assert.equal(game.state.travel.kind, 'spring-return');
+      assert.equal(game.state.travel.from, id);
+      assert.ok(game.state.travel.lipProgress < game.state.travel.gateProgress);
+      const seconds = finishRailTrip(game);
+      assert.ok(seconds > 1.3 && seconds < 2.35, `${id} return took ${seconds}s`);
+      assert.equal(game.state.mode, 'playing');
+      assert.equal(game.state.station, 'table');
+      assert.equal(game.resume(), false);
+      const exit = { ...game.state.ball };
+      const { direction: [dx,dz], center: [x,z] } = layout.gates[id];
+      assert.ok((exit.x - x) * dx + (exit.z - z) * dz < -layout.ballRadius);
+      game.update(ROOM_STEP);
+      const vx = (game.state.ball.x - exit.x) / ROOM_STEP;
+      const vz = (game.state.ball.z - exit.z) / ROOM_STEP;
+      assert.ok(vx * dx + vz * dz < -.6, 'ball rolls away from the pocket toward the flippers');
+      runs.push({ seconds, speed: Math.hypot(vx, vz) });
+    }
+    assert.ok(runs[1].seconds < runs[0].seconds);
+    assert.ok(runs[1].speed > 2 * runs[0].speed);
+  }
+});
+
+test('a reduced-motion spring return starts at the same playable exit and velocity as a full ride', async t => {
+  for (const id of Object.keys(layout.gates)) {
+    const direct = await machine(t), animated = await machine(t);
+    for (const game of [direct, animated]) {
+      await game.goTo(id, { instant: true });
+      game.setPull(.72);
+      game.release({ instant: game === direct });
+    }
+    assert.equal(direct.state.station, 'table');
+    assert.equal(direct.state.mode, 'playing');
+    finishRailTrip(animated);
+    assert.deepEqual(direct.state.ball, animated.state.ball);
+    frames(direct, 12);
+    frames(animated, 12);
+    for (const axis of ['x','y','z']) close(direct.state.ball[axis], animated.state.ball[axis]);
+  }
+});
+
+test('shots can drop the complete bank, earn its bonus, rearm it, and light both rollover lenses', async t => {
+  const scoreSteps = [], sounds = new Set();
+  let lastScore = 0;
+  const game = await machine(t, e => {
+    if (e.type === 'sound') sounds.add(e.name);
+    if (e.type === 'score') {
+      scoreSteps.push(e.score - lastScore);
+      lastScore = e.score;
+    }
+  });
+  game.setPull(.6);
+  game.release();
+  const lamps = new Set();
+  let fullyDown = false, rearmed = false;
+  for (let frame = 0; frame < 2000 && game.state.mode === 'playing'; frame++) {
+    playFlippers(game);
+    game.update(1 / 60);
+    const { drops, rollovers } = game.state.mechanisms;
+    if (hardware.dropBank.targets.every(t => drops[t.id] === 1)) fullyDown = true;
+    if (fullyDown && Object.values(drops).every(level => level === 0)) rearmed = true;
+    for (const light of hardware.rollovers) if (rollovers[light.id] > .5) lamps.add(light.id);
+    if (rearmed && lamps.size === hardware.rollovers.length) break;
+  }
+  assert.ok(fullyDown && rearmed);
+  assert.ok(scoreSteps.includes(500));
+  assert.equal(lamps.size, hardware.rollovers.length);
+  assert.ok(sounds.has('drop-target') && sounds.has('rollover'));
+});
+
+test('a ball through the spinner sets the rotor in motion and awards its own points', async t => {
+  let previousScore = 0, increment = 0, spinnerAward;
+  const game = await machine(t, event => {
+    if (event.type === 'score') {
+      increment = event.score - previousScore;
+      previousScore = event.score;
+    }
+    if (event.name === 'spinner') spinnerAward = increment;
+  });
+  game.setPull(.87);
+  game.release();
+  for (let frame = 0; frame < 1500 && !spinnerAward; frame++) {
+    const { x, z } = game.state.ball;
+    for (const side of ['left','right']) {
+      game.flip(side, (side === 'left') === (x < 0) && z > .595 && z < .725);
+    }
+    game.update(1 / 60);
+  }
+  assert.equal(spinnerAward, 75);
+  const angle = game.state.mechanisms.spin;
+  game.update(1 / 60);
+  assert.ok(Math.abs(game.state.mechanisms.spin - angle) > .03);
 });

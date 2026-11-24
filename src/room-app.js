@@ -10,6 +10,9 @@ let view,game,frame=0,last=0,awakeUntil=0,station='table',soundOn=false,drag=nul
 let fallback=null, lastRoll=null, lastPullSound=0;
 const keys=new Map();
 const actionButtons=new Map();
+const atSpring=()=>game && ['ready','station'].includes(game.state.mode);
+const isSpringAction=id=>id==='launch'||id==='return-projects'||id==='return-experience';
+const charging=()=>game && ['pulling','station-pulling'].includes(game.state.mode);
 const hashStation=()=>{const id=location.hash.slice(1).split('/')[0];return destinations.has(id)?id:'table';};
 function announce(text){$('#live').textContent=text;}
 function showCue(text, duration=4200){
@@ -88,7 +91,7 @@ function tick(now){
   lastRoll={...s.ball};
   view.draw(s);
   if(s.mode!=='travel')syncFocus();
-  if(now<awakeUntil||['playing','travel','pulling'].includes(s.mode))frame=requestAnimationFrame(tick);
+  if(now<awakeUntil||['playing','travel','pulling','station-pulling'].includes(s.mode))frame=requestAnimationFrame(tick);
   else last=0;
 }
 function storeRoute(id,replace=false){
@@ -103,7 +106,7 @@ function onEvent(e){
     station=game.state.station||'table';
     const summary=view.stations.setStation(station);
     storeRoute(station);
-    showCue(station==='projects'?'Try the deposit on the monitor.':station==='experience'?'Select a job card.':game.state.mode==='paused'?'Your ball is waiting.':'Drag the ball back to launch.',3500);
+    showCue(station==='projects'?'Try the deposit on the monitor.':station==='experience'?'Select a job card.':game.state.mode==='paused'?'Your ball is waiting.':game.state.mode==='playing'?'Ball in play · Use the flippers.':'Drag the ball back to launch.',3500);
     announce(summary||'At the flippers.');ui();wake();return;
   }
   if(e.type==='state'&&view&&game){
@@ -121,6 +124,7 @@ async function goto(id,{instant=false,historyChange=false}={}){
   if(!game||!view)return;
   if(guide.open)guide.close();
   if(id===game.state.station&&!game.state.travel)return;
+  if(charging())game.cancelPull();
   drag=null;spaceStart=0;hover.hidden=true;canvas.style.cursor='default';
   if(!historyChange)storeRoute(id);
   const done=game.goTo(id,{instant:instant||reduced.matches});wake(800);
@@ -129,9 +133,9 @@ async function goto(id,{instant=false,historyChange=false}={}){
 function act(id){
   if(!game||!view)return;
   if(id==='resume-pdf'){window.open('/daniel-ryu-resume.pdf','_blank','noopener');return;}
-  if(id==='launch'){
-    if(game.state.mode==='paused')game.resume();
-    else if(game.state.mode==='ready'){game.setPull(.72);game.release();}
+  if(isSpringAction(id)){
+    if(id==='launch'&&game.state.mode==='paused')game.resume();
+    else if(atSpring()){game.setPull(.72);game.release({instant:reduced.matches});}
     wake();return;
   }
   if(id==='play-mode'||id==='explore-mode'){
@@ -149,8 +153,8 @@ canvas.addEventListener('pointerdown',e=>{
   if(!game||!e.isPrimary||e.button!==0)return;
   canvas.focus({preventScroll:true});const [x,y]=at(e);const action=view.pick(x,y,actions());
   drag={id:e.pointerId,x,y,action,max:0};canvas.setPointerCapture(e.pointerId);
-  if(action==='launch' && game.state.mode==='ready'){
-    game.setPull(0);drag.spring=true;drag.axis=view.pullVector();canvas.style.cursor='grabbing';
+  if(isSpringAction(action) && atSpring()){
+    game.setPull(0);drag.spring=true;drag.axis=view.pullVector(action);canvas.style.cursor='grabbing';
     showCue('Release to launch.',0);hover.hidden=true;wake();
   }
 });
@@ -168,7 +172,7 @@ canvas.addEventListener('pointermove',e=>{
     }return;
   }
   if(e.pointerType==='touch')return;
-  const id=view.pick(x,y,actions());canvas.style.cursor=id?(id==='launch'?'grab':'pointer'):'default';
+  const id=view.pick(x,y,actions());canvas.style.cursor=id?(isSpringAction(id)?'grab':'pointer'):'default';
   hover.hidden=!id;if(id){
     hover.textContent=controlLabel(id);hover.style.left=Math.min(x+12,innerWidth-120)+'px';
     hover.style.top=Math.max(4,y-32)+'px';
@@ -179,8 +183,10 @@ function endDrag(e,cancel=false){
   const pending=drag;drag=null;
   if(canvas.hasPointerCapture(e.pointerId))canvas.releasePointerCapture(e.pointerId);
   if(pending.spring){
-    if(cancel||game.state.pull<.035){game.cancelPull();showCue('Hold the steel ball, drag back, then release.');}
-    else game.release();
+    if(cancel||game.state.pull<.035){
+      game.cancelPull();
+      showCue(pending.action==='launch'?'Hold the steel ball, drag back, then release.':'Pull the handle away from the cup and release.');
+    }else game.release({instant:reduced.matches});
     lastPullSound=0;canvas.style.cursor='grab';
   }else if(!cancel&&pending.max<12&&pending.action)act(pending.action);
   wake();
@@ -196,22 +202,22 @@ for(const b of document.querySelectorAll('[data-side]')){
 function key(e,down){
   if(!game||guide.open||e.ctrlKey||e.altKey||e.metaKey)return;
   if(e.key==='Escape'&&down){goto('table');return;}
-  if(station!=='table'||game.state.mode==='travel')return;
+  if(game.state.mode==='travel')return;
   if(e.code==='Space'){
     if(e.target.closest('button,a'))return;
     e.preventDefault();
-    if(down&&!e.repeat&&game.state.mode==='ready'){spaceStart=performance.now();game.setPull(0);}
-    if(!down&&spaceStart){spaceStart=0;game.release();}
-  }else if(e.code==='ArrowLeft'||e.code==='ArrowRight'){
+    if(down&&!e.repeat&&atSpring()){spaceStart=performance.now();game.setPull(0);}
+    if(!down&&spaceStart){spaceStart=0;game.release({instant:reduced.matches});}
+  }else if(station==='table'&&(e.code==='ArrowLeft'||e.code==='ArrowRight')){
     e.preventDefault();const side=e.code==='ArrowLeft'?'left':'right';keys.set(side,down);game.flip(side,down);
   }
   wake(300);
 }
 document.addEventListener('keydown',e=>key(e,true));document.addEventListener('keyup',e=>key(e,false));
-function cancelControls(){for(const side of keys.keys())game?.flip(side,false);keys.clear();spaceStart=0;if(game?.state.mode==='pulling')game.cancelPull();drag=null;audio.roll(0);}
+function cancelControls(){for(const side of keys.keys())game?.flip(side,false);keys.clear();spaceStart=0;if(charging())game.cancelPull();drag=null;audio.roll(0);}
 window.addEventListener('blur',cancelControls);
 document.addEventListener('visibilitychange',()=>{if(document.hidden){cancelControls();last=0;}else wake();});
-$('#guide').addEventListener('click',()=>{ui();guide.showModal();});
+$('#guide').addEventListener('click',()=>{cancelControls();ui();guide.showModal();});
 $('#back').addEventListener('click',()=>goto('table'));
 $('#resume').addEventListener('click',()=>{game?.resume();wake();});
 for(const b of document.querySelectorAll('[data-route]'))b.addEventListener('click',()=>{guide.close();goto(b.dataset.route);});

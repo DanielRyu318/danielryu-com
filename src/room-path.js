@@ -37,3 +37,29 @@ export function railPath(points) {
   }
   return { at, length, firstProgress };
 }
+
+// Isolate the physical wireform from the approach curve. A flipper shot or a
+// redirect must not change the spline that the cabinet maker bent into metal.
+export function joinRailPaths(paths) {
+  const segments = paths.filter(path => path.length > 0.00001);
+  if (!segments.length) return paths[0];
+  const length = segments.reduce((sum, path) => sum + path.length, 0);
+  function at(progress) {
+    if (progress <= 0) return segments[0].at(0);
+    if (progress >= 1) return segments.at(-1).at(1);
+    let distance = progress * length;
+    for (const path of segments) {
+      if (distance <= path.length) return path.at(distance / path.length);
+      distance -= path.length;
+    }
+    return segments.at(-1).at(1);
+  }
+  return { at, length };
+}
+
+export function sectionOfPath(path, start, end) {
+  return {
+    length: Math.abs(end - start) * path.length,
+    at: t => path.at(t <= 0 ? start : t >= 1 ? end : start + (end - start) * t)
+  };
+}

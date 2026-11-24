@@ -1,12 +1,12 @@
-import { ROOM_LAYOUT as layout, surfaceY } from './room-layout.js';
+import { ROOM_LAYOUT as layout, returnSpring, surfaceY } from './room-layout.js';
 import { railPath, tuple, xyz } from './room-path.js';
 import { createPlayfield, ROOM_STEP } from './room-playfield.js';
+import { roomRoute } from './room-routes.js';
+import hardware from './room-mechanisms.json' with { type: 'json' };
 
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const launcher = layout.launcher;
 const cradle = xyz(launcher.path[0]);
-const deckPoint = (x, z) => [x, surfaceY(z) + layout.ballRadius, z];
-const junction = deckPoint(-0.115, 0.2);
 
 // Only a forward crossing inside the mouth, with the entire ball between the posts, operates a gate.
 export function crossedRoomGate(before, after) {
@@ -28,10 +28,17 @@ export function crossedRoomGate(before, after) {
 export async function createRoomPhysics({ onEvent = () => {} } = {}) {
   const stats = { launches: 0, bumperHits: 0, drains: 0, highScore: 0 };
   const flippers = Object.fromEntries(layout.flippers.map(f => [f.side, { angle: f.rest, held: false }]));
+  const mechanisms = {
+    drops: Object.fromEntries(hardware.dropBank.targets.map(t => [t.id, 0])),
+    rollovers: Object.fromEntries(hardware.rollovers.map(t => [t.id, 0])),
+    spin: 0
+  };
   const state = { mode: 'ready', station: 'table', ball: { ...cradle }, flippers, pull: 0, explore: false,
-    score: 0, ballScore: 0, stats, travel: null, secret: false, gates: { projects: false, experience: false } };
+    mechanisms, score: 0, ballScore: 0, stats, travel: null, secret: false, gates: { projects: false, experience: false } };
   const lastImpact = new Map();
   const bells = new Set();
+  const down = new Set();
+  let spinVelocity = 0, rearmAt = Infinity;
   let elapsed = 0, accumulated = 0, guide = null, trip = null, suspended = null;
   let disposed = false;
   const field = await createPlayfield(impact);
@@ -64,6 +71,25 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
         emit('secret');
         sound('secret');
       }
+    } else if (tag.type === 'drop' && !down.has(tag.id)) {
+      down.add(tag.id);
+      field.setDropRaised(tag.id, false);
+      score(125);
+      sound('drop-target');
+      if (down.size === hardware.dropBank.targets.length) {
+        score(500);
+        rearmAt = elapsed + 1.2;
+        sound('secret', .65);
+      }
+    } else if (tag.type === 'spinner') {
+      const speed = field.snapshot().velocity.z;
+      spinVelocity = Math.sign(speed) * clamp(Math.abs(speed) * 24, 6, 34);
+      score(75);
+      sound('spinner', clamp(Math.abs(speed), .25));
+    } else if (tag.type === 'rollover') {
+      mechanisms.rollovers[tag.id] = 1;
+      score(50);
+      sound('rollover', .65);
     } else if (tag.type === 'rail') {
       const v = field.snapshot().velocity;
       const speed = Math.hypot(v.x, v.z);
@@ -72,7 +98,16 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
   }
   function place(p) { Object.assign(state.ball, p); }
   function setPull(fraction) {
-    if (disposed || !['ready', 'pulling'].includes(state.mode) || !Number.isFinite(fraction)) return false;
+    if (disposed || !Number.isFinite(fraction)) return false;
+    if (['station', 'station-pulling'].includes(state.mode)) {
+      const spring = returnSpring(state.station);
+      if (!spring) return false;
+      state.pull = clamp(fraction);
+      place(xyz(spring.origin.map((v,i) => v + spring.direction[i] * spring.stroke * state.pull)));
+      if (state.mode !== 'station-pulling') mode('station-pulling');
+      return true;
+    }
+    if (!['ready', 'pulling'].includes(state.mode)) return false;
     state.pull = clamp(fraction);
     state.ball.z = cradle.z + launcher.pullDistance * state.pull;
     state.ball.y = cradle.y - layout.deck.slope * launcher.pullDistance * state.pull;
@@ -80,13 +115,27 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     return true;
   }
   function cancelPull() {
+    if (state.mode === 'station-pulling') {
+      state.pull = 0;
+      place(xyz(layout.anchors[state.station]));
+      mode('station');
+      return true;
+    }
     if (state.mode !== 'pulling') return false;
     state.pull = 0;
     place(cradle);
     mode('ready');
     return true;
   }
-  function release() {
+  function release({ instant = false } = {}) {
+    if (!disposed && ['station', 'station-pulling'].includes(state.mode)) {
+      const power = state.mode === 'station' ? .72 : state.pull;
+      if (!returnSpring(state.station)) return false;
+      state.pull = 0;
+      sound('launch', .5 + .45 * power);
+      goTo('table', { instant, power });
+      return true;
+    }
     if (disposed || !['pulling', 'ready'].includes(state.mode)) return false;
     const power = state.mode === 'pulling' ? state.pull : 0.90;
     const path = railPath([tuple(state.ball), ...launcher.path]);
@@ -96,6 +145,7 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     state.ballScore = 0;
     bells.clear();
     lastImpact.clear();
+    resetBank();
     mode('playing');
     sound('launch', 0.56 + power * 0.44);
     return true;
@@ -108,6 +158,24 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     return true;
   }
   function setExplore(value) { state.explore = Boolean(value); }
+  function resetBank() {
+    for (const id of down) field.setDropRaised(id, true);
+    down.clear();
+    rearmAt = Infinity;
+  }
+  function stepMechanisms() {
+    if (state.mode === 'playing' && elapsed >= rearmAt && hardware.dropBank.targets.every(t =>
+      Math.hypot(t.x - state.ball.x, t.z - state.ball.z) > .075)) resetBank();
+    for (const target of hardware.dropBank.targets) {
+      const level = mechanisms.drops[target.id];
+      mechanisms.drops[target.id] = clamp(level + ROOM_STEP * (down.has(target.id) ? 17 : -8));
+    }
+    for (const insert of hardware.rollovers) {
+      mechanisms.rollovers[insert.id] = Math.max(0, mechanisms.rollovers[insert.id] - ROOM_STEP * .85);
+    }
+    mechanisms.spin += spinVelocity * ROOM_STEP;
+    spinVelocity *= Math.exp(-3.0 * ROOM_STEP);
+  }
   function freeze() {
     if (state.mode === 'pulling') cancelPull();
     for (const f of Object.values(flippers)) f.held = false;
@@ -117,42 +185,33 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     }
     field.park();
   }
-  const stationRoute = id => layout.routes[id] || [layout.anchors[id]];
-  function route(to, directGate, crossing) {
-    const from = state.station;
-    if (crossing) return railPath(from === 'projects' ? layout.crossing : [...layout.crossing].reverse());
-    const points = [tuple(state.ball)];
-    if (from !== 'table' && !trip) {
-      points.push(...[...stationRoute(from)].reverse().slice(1));
-      points.push(...[...(layout.approaches[from] || [])].reverse().map(([x,z]) => deckPoint(x,z)));
-    }
-    if (to === 'table') {
-      points.push(junction, tuple(suspended?.position || cradle));
-    } else {
-      if (!directGate) {
-        if (state.mode === 'ready' && from === 'table' && !trip) points.push(...launcher.path.slice(1));
-        points.push(junction);
-        points.push(...(layout.approaches[to] || []).map(([x,z]) => deckPoint(x,z)));
-      }
-      points.push(...stationRoute(to));
-    }
-    return railPath(points);
-  }
   function arrive() {
     if (!trip) return;
     const finished = trip;
+    if (finished.pulse > 0) flippers.left.held = false;
     trip = null;
     const to = finished.data.to;
     place(finished.path.at(1));
     state.station = to;
     state.travel = null;
     state.gates.projects = state.gates.experience = false;
-    mode(to === 'table' ? suspended ? 'paused' : 'ready' : 'station');
-    if (!finished.instant) sound('arrive');
+    if (finished.data.kind === 'spring-return') {
+      suspended = null;
+      const last = finished.path.at(1 - .012 / finished.path.length);
+      const dx = state.ball.x - last.x, dz = state.ball.z - last.z;
+      const speed = finished.exitSpeed / Math.hypot(dx, dz);
+      const vx = dx * speed, vz = dz * speed;
+      field.setBall(state.ball, {x:vx, y:-layout.deck.slope * vz, z:vz},
+        {x:vz / layout.ballRadius, y:0, z:-vx / layout.ballRadius});
+      mode('playing');
+    } else {
+      mode(to === 'table' ? suspended ? 'paused' : 'ready' : 'station');
+      if (!finished.instant) sound('arrive');
+    }
     emit('arrive', { station: to });
     finished.resolve(true);
   }
-  function goTo(to, { instant = false, directGate = false } = {}) {
+  function goTo(to, { instant = false, directGate = false, power = null } = {}) {
     if (disposed || !Object.hasOwn(layout.anchors, to)) return Promise.resolve(false);
     if (trip?.data.to === to) {
       const pending = trip.promise;
@@ -160,24 +219,38 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
       return pending;
     }
     if (state.station === to && !trip) return Promise.resolve(true);
-    if (!trip && state.station === 'table' && state.mode !== 'paused') freeze();
-    const crossing = !trip && Boolean(layout.routes[state.station] && layout.routes[to]);
-    const path = route(to, directGate, crossing);
+    const spring = power !== null;
+    if (!spring && state.mode === 'station-pulling') cancelPull();
+    const from = state.station;
+    const atCradle = !trip && from === 'table' && ['ready','pulling'].includes(state.mode);
+    const rollingGuide = guide;
+    if (!trip && from === 'table' && state.mode !== 'paused') freeze();
+    const plan = roomRoute({ from, to, position: state.ball, saved: suspended && tuple(suspended.position),
+      directGate, spring, current: trip, atCradle, launcherGuide: rollingGuide });
+    const {path, crossing, gateDistance, lipDistance} = plan;
+    if (trip?.pulse > 0) flippers.left.held = false;
     trip?.resolve(false);
     guide = null;
-    const from = state.station;
-    const lip = crossing ? 0.07 : layout.routes[to] ? path.firstProgress(([x]) => to === 'projects' ? x < -0.52 : x > 0.52) : 0.12;
-    const data = { from, to, kind: to === 'table' ? 'return' : 'station', progress: 0, lipProgress: lip,
-      start: { ...state.ball }, position: state.ball, crossing };
+    const kind = spring ? 'spring-return' : to === 'table' ? 'return' : 'station';
+    const data = { from, to, kind, progress: 0,
+      gateProgress: path.length ? gateDistance / path.length : 0,
+      lipProgress: path.length ? lipDistance / path.length : 0,
+      start: { ...state.ball }, position: state.ball, ahead: path.at(Math.min(1, .12 / path.length)), crossing };
     let resolve;
     const promise = new Promise(done => { resolve = done; });
-    trip = { data, path, elapsed: 0, duration: clamp(path.length / 1.23, 0.85, 2.85), resolve, promise, instant };
+    const exitSpeed = spring ? .65 + power * 1.15 : 1.22;
+    const velocity = suspended?.dynamic?.velocity;
+    const entrySpeed = directGate && velocity ? clamp(Math.hypot(velocity.x, velocity.z), .65, 2.3) : 1.3;
+    const speed = spring ? 1.02 + power * .86 : atCradle ? 2.55 : entrySpeed;
+    trip = { ...plan, data, speed, distance: 0, exitSpeed, resolve, promise, instant,
+      soundedGate: false, flipped: false, pulse: 0, startY: state.ball.y };
     state.travel = data;
     state.gates.projects = to === 'projects';
     state.gates.experience = to === 'experience';
     mode('travel');
-    if (instant) arrive();
-    else sound('gate');
+    if (instant || path.length < .0001) arrive();
+    else if (atCradle) sound('launch', .62);
+    else if (crossing) sound('gate', .55);
     return promise;
   }
   function resume() {
@@ -211,19 +284,59 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     mode('ready');
     sound('drain');
   }
+  function advanceRail() {
+    const { path, data, distance, gateDistance, flipperDistance } = trip;
+    const remaining = path.length - distance;
+    const fromCabinet = data.from === 'table' && data.to !== 'table' && !data.crossing;
+    const onApproach = fromCabinet && distance < gateDistance;
+    const spring = data.kind === 'spring-return';
+    // A governed rail retains momentum over the lip, slows over the crest
+    // and gains speed on the descent. Only the few centimetres of a locking
+    // cup actively brake the ball. The table-return exit retains its speed.
+    const cruise = data.crossing ? 1.31 : spring ? .84 + .075 * trip.exitSpeed : .94;
+    const energy = cruise * cruise + 1.05 * (trip.startY - state.ball.y);
+    let wanted = Math.sqrt(Math.max(.46, energy));
+    if (onApproach) {
+      // Let the automatic flipper shot carry its momentum to the mouth,
+      // then feed it through the governor over the last few ball lengths.
+      wanted = Math.min(2.22, Math.sqrt(wanted * wanted + 8.4 * (gateDistance - distance)));
+    }
+    if (spring && remaining < .28) {
+      const mix = remaining / .28;
+      wanted = trip.exitSpeed + (wanted - trip.exitSpeed) * mix;
+    } else if (!spring) {
+      wanted = Math.min(wanted, Math.sqrt(.145 ** 2 + 7.4 * remaining));
+    }
+    trip.speed += clamp(wanted - trip.speed, -5.6 * ROOM_STEP, 4.5 * ROOM_STEP);
+    trip.distance = Math.min(path.length, distance + trip.speed * ROOM_STEP);
+    data.progress = trip.distance / path.length;
+    place(path.at(data.progress));
+    data.ahead = path.at(Math.min(1, data.progress + .13 / path.length));
+    if (!trip.soundedGate && !data.crossing && trip.distance >= gateDistance) {
+      trip.soundedGate = true;
+      sound('gate', .7);
+    }
+    if (!trip.flipped && flipperDistance >= 0 && trip.distance >= flipperDistance - .045) {
+      trip.flipped = true;
+      flippers.left.held = true;
+      trip.pulse = .085;
+      sound('flip', .8);
+    }
+    if (trip.pulse > 0) {
+      trip.pulse -= ROOM_STEP;
+      if (trip.pulse <= 0) flippers.left.held = false;
+    }
+    if (trip.distance >= path.length) arrive();
+  }
   function tick() {
-    elapsed += ROOM_STEP;
+    if (state.mode === 'playing') elapsed += ROOM_STEP;
+    stepMechanisms();
     for (const f of layout.flippers) {
       const control = flippers[f.side], target = control.held ? f.raised : f.rest;
       control.angle += Math.sign(target - control.angle) * Math.min(Math.abs(target - control.angle), ROOM_STEP * (control.held ? 19 : 12));
     }
     if (trip) {
-      trip.elapsed += ROOM_STEP;
-      const t = Math.min(1, trip.elapsed / trip.duration);
-      const progress = t * t * (3 - 2 * t);
-      trip.data.progress = progress;
-      place(trip.path.at(progress));
-      if (t === 1) arrive();
+      advanceRail();
       return;
     }
     if (state.mode !== 'playing') return;

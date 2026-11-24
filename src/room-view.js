@@ -3,6 +3,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { ROOM_LAYOUT as layout, surfaceY } from './room-layout.js';
 import { createRoomStations } from './room-stations.js';
+import { cameraPoses, createCameraRide } from './room-camera.js';
+import hardware from './room-mechanisms.json' with { type: 'json' };
 
 const v = (x, y, z) => new THREE.Vector3(x, y, z);
 const clamp = THREE.MathUtils.clamp;
@@ -81,6 +83,47 @@ function scoreDrums(model) {
   };
 }
 
+function bankInserts(scene) {
+  const panel = new THREE.Group();
+  panel.position.set(-.033, surfaceY(.279) + .0017, .279);
+  panel.rotation.x = -Math.PI / 2 + Math.atan(layout.deck.slope);
+  const c = document.createElement('canvas');
+  c.width = 768; c.height = 288;
+  const ctx = c.getContext('2d');
+  // The printed bonus and its three lenses are flush with the enamel.
+  const outline = new Path2D('M 14 116 L 185 32 Q 384 -8 583 32 L 754 116 L 567 250 Q 384 289 201 250 Z');
+  ctx.fillStyle = '#253d39'; ctx.fill(outline);
+  ctx.lineWidth = 6; ctx.strokeStyle = '#cea258'; ctx.stroke(outline);
+  for (const mirror of [false,true]) {
+    ctx.save();
+    if (mirror) { ctx.translate(c.width,0); ctx.scale(-1,1); }
+    ctx.beginPath(); ctx.moveTo(65,120); ctx.lineTo(175,75);
+    ctx.moveTo(82,133); ctx.lineTo(161,104); ctx.stroke(); ctx.restore();
+  }
+  ctx.textAlign = 'center'; ctx.fillStyle = '#ffe3a3'; ctx.font = 'bold 50px Georgia';
+  ctx.fillText('BANK BONUS 500',384,216);
+  const print = new THREE.CanvasTexture(c);
+  print.colorSpace = THREE.SRGBColorSpace;
+  panel.add(new THREE.Mesh(new THREE.PlaneGeometry(.254,.096),
+    new THREE.MeshBasicMaterial({map:print,transparent:true,depthWrite:false})));
+  const diamond = new THREE.Shape();
+  diamond.moveTo(0,.0125); diamond.lineTo(.014,0); diamond.lineTo(0,-.0125);
+  diamond.lineTo(-.014,0); diamond.closePath();
+  const geometry = new THREE.ShapeGeometry(diamond);
+  const lamps = hardware.dropBank.targets.map(({id},i)=>{
+    const lens = new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({
+      color:0xda8231,emissive:0xffa745,emissiveIntensity:.31,roughness:.3,metalness:.12
+    }));
+    lens.position.set((i-1)*.044,.012 + (i===1?.003:0),.001);
+    panel.add(lens);
+    return {id,material:lens.material};
+  });
+  scene.add(panel);
+  return drops=>{
+    for(const lamp of lamps)lamp.material.emissiveIntensity=.31+2.8*drops[lamp.id];
+  };
+}
+
 function lightRoom(scene) {
   scene.add(new THREE.HemisphereLight(0xc7d1e2,0x5e4838,.32));
   const window = new THREE.DirectionalLight(0xa6c5e7,.55);
@@ -138,7 +181,24 @@ export async function createRoomView(canvas) {
     }
   });
   const byName=name=>model.getObjectByName(name);
-  const stations=createRoomStations({screen:byName('Anchor_CRT'),archive:byName('Anchor_Archive'),switchAnchor:byName('Anchor_Switch')});
+  const blades=hardware.dropBank.targets.map(({id,node})=>{
+    const blade=byName(node);
+    return {id,blade,raised:blade.position.y};
+  });
+  const spinner=byName(hardware.spinner.node);
+  const axleRest=spinner.rotation.x;
+  const rolloverLamps=hardware.rollovers.map(insert=>{
+    let lens;
+    byName(insert.node).traverse(mesh=>{
+      if(mesh.isMesh&&mesh.material.name===insert.material)lens=mesh.material;
+    });
+    return {id:insert.id,lens,idle:lens.emissiveIntensity};
+  });
+  const buttons=['Left','Right'].map(side=>{
+    const button=byName('Cabinet_Button_'+side);
+    return {button,rest:button.position.x,side:side.toLowerCase()};
+  });
+  const stations=createRoomStations({screen:byName('Anchor_CRT'),archive:byName('Anchor_Archive'),switchAnchor:byName('Anchor_Switch'),plungerParent:scene});
   const palette={
     cream:material(0xffe4ac,.34,.09),rubber:material(0x9a392b,.65),
     brass:material(0xbb833d,.22,.80)
@@ -164,6 +224,7 @@ export async function createRoomView(canvas) {
   }
   const swivel=byName('Projects_CRT_Swivel');
   const updateScore=scoreDrums(model);
+  const updateBank=bankInserts(scene);
   const lever=new THREE.Group();
   const leverFoot=new THREE.Mesh(new THREE.CylinderGeometry(.019,.025,.012,24),palette.brass);
   const leverStem=new THREE.Mesh(new THREE.CylinderGeometry(.0045,.007,.063,16),palette.brass);
@@ -196,77 +257,59 @@ export async function createRoomView(canvas) {
     const [px,pz]=layout.gates[id].center;
     plate.position.set(px,surfaceY(pz+.144)+.006,pz+.144);plate.rotation.x=-Math.PI/2+.065;
     plate.userData.action=id;scene.add(plate);interactive.push(plate);mobilePlates.push(plate);
-    path.slice(0,5).forEach(([x,y,z],i)=>{
+    path.forEach(([x,y,z],i)=>{
       const m=new THREE.MeshStandardMaterial({color:0xc79958,emissive:0xff9e46,emissiveIntensity:.16,roughness:.39});
       const base=new THREE.Mesh(new THREE.SphereGeometry(.008,12,8),m);
-      base.position.set(x+(id==='projects'?-.042:.042),y-.009,z);
+      const next=path[Math.min(i+1,path.length-1)],prev=path[Math.max(0,i-1)];
+      const tangent=v(next[0]-prev[0],0,next[2]-prev[2]).normalize();
+      const sideOffset=id==='projects'?.034:-.034;
+      base.position.set(x+tangent.z*sideOffset,y-.014,z-tangent.x*sideOffset);
       base.scale.y=.68;scene.add(base);
       const halo=glow(base.position,.074,.05);
-      routeLamps.push({id,i,m,halo});
+      routeLamps.push({id,m,halo,position:base.position});
     });
   }
   const carriage=byName('Archive_Carriage');
   const carriageStart=carriage?.position.clone();
   const projectCup=byName('Projects_Cup'), experienceCup=byName('Experience_Cup');
   const projectCupY=projectCup?.position.y, experienceCupY=experienceCup?.position.y;
-  const poses={};
+  let poses;
   const target = new THREE.Vector3();
   let aspect=1,station='table',width=1,height=1;
-  let activeTravel=null, depart=null, savedTarget=null, initialFov=0;
-  const pose=(eye,look,fov,near=.035)=>({eye,look,fov,near});
+  let activeTravel=null, ride=null, lastTripProgress=0;
   function measure() {
     width=canvas.clientWidth;height=canvas.clientHeight;
     aspect=width/Math.max(1,height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1,1.65));
     renderer.setSize(width,height,false);
     camera.aspect=aspect;
-    const pitch=Math.asin(clamp(.58 / aspect,.25,.97))-.035;
-    const dist=3.75;
-    const focus=v(.026,.94,.055);
-    const offset=v(-.058,Math.sin(pitch),Math.cos(pitch)).normalize().multiplyScalar(dist);
-    const fitWidth=1.38;
-    const fov=THREE.MathUtils.radToDeg(2*Math.atan(Math.max(fitWidth/aspect,1.78*Math.sin(pitch)+.14)/(2*dist)));
-    poses.table=pose(focus.clone().add(offset),focus,fov,aspect<.9?2.48:1.64);
-    const narrow=aspect<.80;
-    for(const plate of mobilePlates)plate.visible=narrow;
-    poses.projects=narrow
-      ?pose(v(-3.14,1.82,-1.16),v(-1.79,1.15,-1.10),60)
-      :pose(v(-3.14,1.82,-1.25),v(-1.20,1.04,-.88),46);
-    poses.experience=narrow
-      ?pose(v(1.62,1.63,1.16),v(1.80,1.35,-1.04),59)
-      :pose(v(.99,1.64,1.03),v(1.58,1.28,-1.02),39);
-    if (station in poses) snap(station);
+    poses=cameraPoses(aspect);
+    for(const plate of mobilePlates)plate.visible=aspect<.8;
+    if (!activeTravel) snap(station);
+    else { activeTravel=null; camera.updateProjectionMatrix(); }
   }
-  function snap(id) {
-    const p=poses[id]||poses.table;
+  function applyPose(p) {
     camera.position.copy(p.eye);target.copy(p.look);camera.fov=p.fov;camera.near=p.near;
     camera.lookAt(target);camera.updateProjectionMatrix();camera.updateMatrixWorld();
   }
+  function snap(id) { applyPose(poses[id]||poses.table); }
   function travelCamera(state) {
     const trip=state.travel;
     if (!trip) {
       if (activeTravel || station !== state.station) {
         station=state.station||'table';if(!(station in poses))station='table';
-        snap(station);activeTravel=null;
+        snap(station);activeTravel=null;lastTripProgress=0;
       }
       return;
     }
     if(activeTravel!==trip) {
-      activeTravel=trip;depart=camera.position.clone();savedTarget=target.clone();initialFov=camera.fov;
+      activeTravel=trip;
+      const start={eye:camera.position.clone(),look:target.clone(),fov:camera.fov,near:camera.near};
+      lastTripProgress=trip.progress;
+      ride=createCameraRide(trip,start,poses[trip.to]||poses.table);
     }
-    const end=poses[trip.to]||poses.table;
-    const wait=trip.from==='table'?trip.lipProgress:0;
-    const u=clamp((trip.progress-wait)/Math.max(.001,1-wait),0,1),s=ease(u);
-    const arc=Math.sin(Math.PI*s);
-    camera.position.lerpVectors(depart,end.eye,s);
-    // Pass the outside shoulder of the rail, then settle at the instrument.
-    camera.position.x+=arc*(trip.to==='projects'?-.45:trip.to==='experience'?.35:0);
-    camera.position.y+=arc*.16;
-    target.lerpVectors(savedTarget,end.look,s);
-    target.lerp(ball.position,Math.sin(Math.PI*s)*.60);
-    camera.fov=THREE.MathUtils.lerp(initialFov,end.fov,s)+arc*8;
-    camera.near=THREE.MathUtils.lerp(trip.from==='table'?poses.table.near:.035,end.near,s);
-    camera.lookAt(target);camera.updateProjectionMatrix();camera.updateMatrixWorld();
+    const progress=(trip.progress-lastTripProgress)/Math.max(.001,1-lastTripProgress);
+    applyPose(ride(progress,ball.position,trip.ahead));
   }
   function project(pos) {
     const q=pos.clone().project(camera);
@@ -278,6 +321,7 @@ export async function createRoomView(canvas) {
   };
   function actionPosition(action) {
     if(action==='launch')return ball.position;
+    if(action.startsWith('return-'))return stations.actionPosition(action);
     const s=stations.pickables.find(mesh=>mesh.userData.action===action);
     if(s && station!=='table')return s.getWorldPosition(new THREE.Vector3());
     const namedObj=interactive.find(obj=>obj.userData.action===action&&!stations.pickables.includes(obj));
@@ -288,33 +332,47 @@ export async function createRoomView(canvas) {
   function pick(x,y,actions) {
     ray.setFromCamera({x:x/width*2-1,y:1-y/height*2},camera);
     const hits=ray.intersectObjects(interactive,false);
-    for(const hit of hits)if(actions.includes(hit.object.userData.action))return hit.object.userData.action;
+    for(const hit of hits) {
+      const action=hit.object===ball&&station!=='table'?'return-'+station:hit.object.userData.action;
+      if(actions.includes(action))return action;
+    }
     let best=null,closest=Infinity;
     for(const action of actions){
       const pos=actionPosition(action);if(!pos)continue;
       const pt=project(pos);
       const d=Math.hypot(x-pt.x,y-pt.y);
-      if(pt.visible&&d<closest&&d<(action==='launch'?32:22)){best=action;closest=d;}
+      if(pt.visible&&d<closest&&d<(action==='launch'||action.startsWith('return-')?32:22)){best=action;closest=d;}
     }
     return best;
   }
   function draw(state) {
     const b=state.ball;ball.position.set(b.x,b.y,b.z);
+    for(const id of ['projects','experience'])stations.setReturnPull('return-'+id,state.station===id?state.pull:0);
+    for(const {id,blade,raised} of blades)blade.position.y=raised-.054*state.mechanisms.drops[id];
+    spinner.rotation.x=axleRest+state.mechanisms.spin;
+    for(const {id,lens,idle} of rolloverLamps)lens.emissiveIntensity=Math.max(.22,idle)+2.8*state.mechanisms.rollovers[id];
+    updateBank(state.mechanisms.drops);
+    for(const {button,rest,side} of buttons)
+      button.position.x=rest+(state.flippers[side].held?(side==='left'?.007:-.007):0);
     contactShadow.position.set(b.x,surfaceY(b.z)+.0035,b.z);
     contactShadow.visible=Math.abs(b.x)<.51&&Math.abs(b.z)<.90&&b.y<surfaceY(b.z)+.075;
     flippers.forEach((f,i)=>{f.rotation.y=-state.flippers[layout.flippers[i].side].angle;});
-    const springEnd=layout.launcher.z+.02+state.pull*layout.launcher.pullDistance;
+    const springEnd=layout.launcher.z+.02+(state.station==='table'?state.pull:0)*layout.launcher.pullDistance;
     coil.scale.z=Math.max(.035,.855-springEnd);
     lever.rotation.x=state.explore?.46:-.46;
     signalPivot.rotation.y=(state.travel?.to==='experience'?1:-1)*.32+Math.sin(state.score*.017)*.43;
     updateScore(state.score);
-    for(const {id,i,m,halo} of routeLamps){
-      const lit=state.travel?.to===id?Math.max(0,1-Math.abs(state.travel.progress*6-i)*.75):0;
+    const trip=state.travel;
+    for(const {id,m,halo,position} of routeLamps){
+      const onWire=trip&&!trip.crossing&&(trip.to===id||trip.from===id);
+      const lit=onWire?1-THREE.MathUtils.smoothstep(ball.position.distanceTo(position),.045,.22):0;
       m.emissiveIntensity=.11+lit*2.6;halo.material.opacity=.02+lit*.72;
     }
-    const trip=state.travel;
     const atStation=(id)=>{
-      if(trip?.to===id)return ease(clamp((trip.progress-.52)/.48,0,1));
+      if(trip?.to===id){
+        const afterGate=(trip.progress-trip.gateProgress)/Math.max(.001,1-trip.gateProgress);
+        return ease(clamp((afterGate-.34)/.66,0,1));
+      }
       if(trip?.from===id)return 1-ease(clamp(trip.progress/.35,0,1));
       return state.station===id?1:0;
     };
@@ -329,7 +387,12 @@ export async function createRoomView(canvas) {
   measure();
   return {stations,measure,draw,pick,project,actionPosition,
     position(action){const p=actionPosition(action);return p?project(p):null;},
-    pullVector(){
+    pullVector(action='launch'){
+      if(action.startsWith('return-')){
+        const axis=stations.returnPullAxis(action);
+        const a=project(axis.start),b=project(axis.end);
+        return {x:b.x-a.x,y:b.y-a.y};
+      }
       const a=project(v(...layout.launcher.path[0])),b=project(v(layout.launcher.x,layout.launcher.path[0][1],layout.launcher.z+layout.launcher.pullDistance));
       return {x:b.x-a.x,y:b.y-a.y};
     },
