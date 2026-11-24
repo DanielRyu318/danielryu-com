@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#152924">
+    <meta name="description" content="Explore Daniel Ryu’s projects, experience and experiments inside a playable, three-dimensional pinball workshop.">
+    <link rel="icon" type="image/svg+xml" href="/flipper.svg">
+    <link rel="stylesheet" href="/src/style.css">
+    <title>Pinball Works — Daniel Ryu</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#stations">Skip to portfolio stations</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a href="#table" class="wordmark" aria-label="Daniel Ryu, workshop home"><img src="/flipper.svg" width="37" height="37" alt=""><span>Daniel Ryu</span></a>
+        <nav class="header-nav" aria-label="Main navigation">
+          <a class="workshop-link" href="#table"><i class="indicator"></i> Workshop</a>
+          <a href="https://github.com/DanielRyu318" target="_blank" rel="noreferrer" class="github-link">GitHub <i data-icon="external"></i></a>
+          <span class="nav-divider"></span>
+          <button class="sound-button" id="sound" type="button" aria-pressed="false"><i data-icon="muted"></i><span>Sound off</span></button>
+          <a class="resume-link" href="/daniel-ryu-resume.pdf" target="_blank" rel="noopener">Résumé <i data-icon="external"></i></a>
+        </nav>
+      </div>
+    </header>
+    <main>
+      <section class="workshop" id="table" aria-label="Interactive pinball workshop">
+        <div class="workshop-inner">
+          <div class="introduction">
+            <div class="eyebrow"><span class="short-rule"></span> A playable portfolio</div>
+            <h1>Pinball<br><em>Works.</em></h1>
+            <p class="intro-description">I’m Daniel, a CS + math student at Illinois. Welcome to my after-hours workshop. Pick a station or stay for a game.</p>
+            <div class="hero-actions">
+              <button id="launch" class="primary-button" type="button"><i data-icon="launch"></i><span>Launch ball</span></button>
+              <a href="#projects" class="projects-link">View projects <i data-icon="arrow"></i></a>
+            </div>
+          </div>
+          <div class="station-focus" hidden>
+            <div class="station-toolbar"><a href="#table" class="back-link"><i data-icon="back"></i> Workshop floor</a></div>
+            <div id="station-content"></div>
+          </div>
+          <div class="scene-wrap">
+            <div id="scene" role="img" aria-label="A three-dimensional wooden pinball cabinet with a teal playfield and warm lights"></div>
+            <div id="scene-fallback" hidden><img src="/workshop.webp" alt="The handcrafted Pinball Works cabinet"></div>
+            <span id="station-label" class="station-label" hidden></span>
+            <div class="scene-controls">
+              <span class="score"><i class="indicator"></i><span>Score</span> <output id="score">000000</output></span>
+              <span class="hud-rule"></span>
+              <span class="keyboard-hint"><kbd>←</kbd><kbd>→</kbd> Flippers</span>
+              <span class="keyboard-hint"><kbd>Space</kbd> Launch</span>
+              <button class="touch-flip" type="button" data-flip="left" aria-label="Left flipper">← Flip</button>
+              <button class="touch-flip" type="button" data-flip="right" aria-label="Right flipper">Flip →</button>
+              <button class="touch-launch" id="hud-launch" type="button" aria-label="Launch ball"><i data-icon="launch"></i></button>
+            </div>
+            <div class="game-prompt" id="game-prompt" hidden></div>
+          </div>
+        </div>
+      </section>
+      <section class="destinations" id="stations" aria-labelledby="stations-title">
+        <div class="stations-heading"><span class="index-icon"><i data-icon="map"></i></span><h2 id="stations-title">Explore the workshop</h2><span class="heading-rule"></span></div>
+        <nav class="station-grid" aria-label="Workshop stations">
+          <a href="#projects" class="station-card card-projects" data-station="projects"><span class="station-art"><i data-icon="projects"></i></span><div><h3>Projects</h3><p>Builds &amp; demos</p></div><i data-icon="external"></i></a>
+          <a href="#experience" class="station-card card-experience" data-station="experience"><span class="station-art"><i data-icon="experience"></i></span><div><h3>Experience</h3><p>Places I’ve worked</p></div><i data-icon="external"></i></a>
+          <a href="#hobbies" class="station-card card-hobbies" data-station="hobbies"><span class="station-art"><i data-icon="hobbies"></i></span><div><h3>Hobbies</h3><p>The rhythm bench</p></div><i data-icon="external"></i></a>
+          <a href="#stats" class="station-card card-stats" data-station="stats"><span class="station-art"><i data-icon="stats"></i></span><div><h3>Stats</h3><p>Your play session</p></div><i data-icon="external"></i></a>
+        </nav>
+      </section>
+      <noscript><section class="no-script"><h2>Daniel Ryu’s portfolio</h2><p>Cline Financial explores investment performance. Pinball Works is this interactive portfolio. Experience includes Fidelity, NOBE, and KATUSA.</p><p><a href="/daniel-ryu-resume.pdf">Read the résumé</a> · <a href="https://github.com/DanielRyu318">Explore GitHub</a></p></section></noscript>
+    </main>
+    <footer class="site-footer"><span><img src="/flipper.svg" alt="" width="18" height="18"> Daniel Ryu</span><a href="https://github.com/DanielRyu318" target="_blank" rel="noreferrer">GitHub <i data-icon="external"></i></a></footer>
+    <div id="announcement" class="sr-only" aria-live="polite"></div>
+  </body>
+</html>

@@ -1,0 +1,9 @@
+.env*
+.git/
+.github/
+.vercel/
+.playwright-cli/
+node_modules/
+dist/
+output/
+*.log
