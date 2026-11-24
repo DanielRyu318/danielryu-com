@@ -3,6 +3,10 @@ export function createAudio() {
   let context;
   let master;
   let noise;
+  let roller;
+  let rollingGain;
+  let rollingFilter;
+  let pan;
   let enabled = false;
   let disposed = false;
 
@@ -21,6 +25,17 @@ export function createAudio() {
         noise = context.createBuffer(1, Math.ceil(context.sampleRate * 0.45), context.sampleRate);
         const samples = noise.getChannelData(0);
         for (let i = 0; i < samples.length; i++) samples[i] = Math.random() * 2 - 1;
+        roller = context.createBufferSource();
+        roller.buffer = noise;
+        roller.loop = true;
+        rollingFilter = context.createBiquadFilter();
+        rollingFilter.type = 'bandpass';
+        rollingFilter.Q.value = 1.4;
+        rollingGain = context.createGain();
+        rollingGain.gain.value = 0;
+        pan = context.createStereoPanner();
+        roller.connect(rollingFilter).connect(rollingGain).connect(pan).connect(master);
+        roller.start();
       }
       master.gain.setTargetAtTime(enabled ? 0.58 : 0, context.currentTime, 0.008);
       if (enabled && context.state !== 'running') await context.resume();
@@ -71,6 +86,10 @@ export function createAudio() {
     const t = context.currentTime;
     const force = Math.min(1, Math.max(0.15, Number(strength) || 1));
     switch (name) {
+      case 'spring':
+        tone(t, 310 + force * 130, 190 + force * 120, .07, .06, 'triangle');
+        rattle(t, 1160, .045, .09 * force);
+        break;
       case 'launch':
         rattle(t, 2300, 0.045, 0.47);
         tone(t + 0.009, 240, 75, 0.18, 0.23, 'triangle');
@@ -110,11 +129,20 @@ export function createAudio() {
     }
   }
 
+  function roll(speed, position = 0, onRail = false) {
+    if (!rollingGain || disposed || !enabled) return;
+    const t = context.currentTime;
+    const movement = Math.min(1, Math.max(0, speed) / 1.8);
+    rollingGain.gain.setTargetAtTime(movement * (onRail ? .105 : .05), t, .05);
+    rollingFilter.frequency.setTargetAtTime((onRail ? 880 : 290) + movement * 280, t, .07);
+    pan.pan.setTargetAtTime(position, t, .06);
+  }
+
   function dispose() {
     disposed = true;
     enabled = false;
     if (context && context.state !== 'closed') context.close().catch(() => {});
   }
 
-  return { enable, play, dispose };
+  return { enable, play, roll, dispose };
 }

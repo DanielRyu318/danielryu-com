@@ -1,0 +1,46 @@
+@import '@fontsource/dm-sans/latin-500.css';
+@import '@fontsource/dm-sans/latin-400.css';
+@import '@fontsource/fraunces/latin-500.css';
+
+:root{color-scheme:dark;font-family:'DM Sans',sans-serif;color:#f7e8cf;background:#24231f}
+*{box-sizing:border-box}
+body{margin:0}
+button,a{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,a:focus-visible{outline:2px solid #ffdc92;outline-offset:3px}
+[hidden]{display:none!important}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+#room{width:100%;height:100vh;height:100dvh;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 35% 45%,#564734,#28271f 60%,#1c211d)}
+#room-view{width:100%;height:100%;display:block;outline:0;touch-action:none;user-select:none}
+.utility{position:absolute;top:max(14px,env(safe-area-inset-top));right:max(17px,env(safe-area-inset-right));display:flex;gap:7px}
+.round-control,.glass-button,.hint,#touch-paddles button{border:1px solid #e7ce9b55;background:#252822e6;color:#f7e7cb;border-radius:100px;box-shadow:0 2px 8px #0003}
+.round-control{display:grid;width:36px;height:36px;place-items:center;padding:8px}
+.round-control svg{width:19px;height:19px}
+.round-control:hover,.glass-button:hover,#touch-paddles button:active{background:#625039}
+.bottom-tools{position:absolute;bottom:max(15px,env(safe-area-inset-bottom));left:50%;width:max-content;max-width:85%;transform:translateX(-50%);display:flex;gap:8px;align-items:center;justify-content:center;pointer-events:none}
+.glass-button,.hint{font-size:12px;line-height:1.4;padding:9px 15px;text-align:center}
+.glass-button{pointer-events:auto}
+.hint{color:#f2dfba}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:12px;background:radial-gradient(ellipse at center,#394136,#26332a);font:500 22px 'Fraunces',serif;z-index:3}
+.loading-lamp{width:10px;height:10px;border-radius:50%;background:#ffd58d;box-shadow:0 0 20px #e7a346;animation:breathe 1.7s infinite alternate}
+@keyframes breathe{to{opacity:.35}}
+#hover{position:fixed;pointer-events:none;background:#322d22ec;border:1px solid #d7b4788f;border-radius:5px;padding:5px 9px;font-size:12px;color:#fff0cd;z-index:2}
+#touch-paddles{position:absolute;inset:auto 12px max(11px,env(safe-area-inset-bottom));justify-content:space-between;pointer-events:none;display:none}
+#touch-paddles button{width:49px;height:46px;font-size:20px;pointer-events:auto;touch-action:none}
+@media(pointer:coarse){#touch-paddles{display:flex}.bottom-tools{max-width:calc(100% - 142px)}.utility{top:9px;right:9px}}
+dialog,.fallback{background:#eee4cc;color:#342f27;box-shadow:0 8px 50px #14161177;border:1px solid #a88655;border-radius:8px}
+dialog{width:min(410px,calc(100% - 32px));padding:24px;max-height:80dvh;overflow:auto}
+dialog::backdrop{background:#1618126b;backdrop-filter:blur(2px)}
+dialog h2,.fallback h2{font:500 28px 'Fraunces',serif;margin:0 0 12px;letter-spacing:-1px}
+dialog p,.fallback p{font-size:14px;line-height:1.55}
+dialog .close{position:absolute;right:10px;top:7px;background:none;border:0;font-size:25px;color:#574833}
+dialog nav,#guide-actions{display:flex;gap:6px;flex-wrap:wrap}
+dialog nav{padding-top:15px;margin-top:13px;border-top:1px solid #ad9f84}
+dialog nav button,dialog nav a,#guide-actions button,.fallback button,.fallback a{border:1px solid #84785e;background:none;padding:7px 11px;border-radius:4px;color:#344033;text-decoration:none;font-size:13px}
+.guide-keys{display:flex;gap:14px;margin:16px 0;font-size:12px}
+kbd{border:1px solid #b2a184;border-radius:3px;padding:1px 4px}
+.fallback{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:24px;width:min(490px,90%);max-height:84dvh;overflow:auto}
+.fallback a{display:inline-block}
+.world-focus{position:absolute;opacity:0;pointer-events:none;transform:translate(-50%,-50%);border:1px solid #d9bc83;border-radius:5px;font-size:12px;white-space:nowrap;color:#ffe8bd;background:#243028;padding:5px 10px}
+.world-focus:focus-visible{opacity:1;outline:2px solid #ffc87d;z-index:1}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}

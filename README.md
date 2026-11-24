@@ -1,8 +1,10 @@
-# Pinball Works
+# Daniel Ryu’s Pinball Workshop
 
-Daniel Ryu’s playable portfolio is a Vite application with a Three.js cabinet, a fixed-step pinball simulation, synthesized mechanical audio, and HTML portfolio stations.
+The pinball machine and the room are the website.
 
-## Run the workshop
+This playable review build follows one journey through the workshop. The Projects rail takes a steel ball from the cabinet to a desk where a CRT runs a Cline Financial demo. From the desk, a brass switch sends the ball to an Experience archive across the room.
+
+## Run locally
 
 Use Node.js 24 and npm.
 
@@ -11,24 +13,27 @@ npm ci
 npm run dev
 ```
 
-Run `npm test` for the physics regression tests. Run `npm run build` and `npm run preview` to serve the production bundle.
+Run `npm test` for the physics regression suite. Use `npm run build` and `npm run preview` to play the bundled version.
 
-## Controls and routes
+## Play and explore
 
-- Space launches a ball. The left and right arrows operate the flippers. Touch controls sit beneath the table on smaller screens.
-- Select a physical target or a station link to visit it. Bumper hits during play offer a link and keep the game running.
-- Leaving a live ball pauses its simulation. Choose **Resume ball** after returning to the workshop floor.
-- Every station has a hash route, such as `/#experience`. Projects have shareable links, including `/#projects/cline-financial`.
-- Audio is opt-in. The sound setting persists in the browser. Game statistics apply to the current page session.
+- Drag the ball against the spring, then release. On a keyboard, hold and release Space to launch and press the arrow keys to flip. Touch devices have left and right flipper buttons.
+- In Explore mode, take a destination shot or select its labeled entrance on the cabinet. In Play mode, a shot lights its destination and leaves the ball in play.
+- At the desk, add a $500 deposit on the monitor and compare the balance and time-weighted return. Use the physical Experience switch to continue to the archive.
+- Select a job card to read its entry. Return to the flippers and choose **Resume ball** to continue an interrupted game.
+- The workshop guide provides keyboard access to destinations, station controls, and the résumé. Direct links include `/#projects/cline-financial` and `/#experience`. Reduced motion skips camera travel. The sound control enables the synthesized machine audio.
 
-## Extend the portfolio
+## Scene and mechanics
 
-Add projects to the `projects` collection in `src/stations.js`. Each entry supplies a stable slug, display name, description, and a function that renders its content. It appears in the existing selector and automatically supports a direct link. Experience entries use the adjacent `experiences` collection.
+`art/workshop.blend` is the editable Blender scene. The browser loads the optimized `public/models/workshop.glb`. To regenerate both, use Python with Pillow and Blender 5.3 from the repository root.
 
-For a new physical station, add its geometry, parking point, and picking position in `src/workshop-model.js`, its camera pose in `src/workshop.js`, and its HTML content in `src/stations.js`. Register its route and accessible link in `src/main.js` and `index.html`. Shared coordinates and collision shapes for playable elements live in `src/pinball.js`.
+```sh
+python scripts/paint_workshop.py
+blender --background --python scripts/build_workshop.py
+```
 
-The scene renders on demand while idle. Station text and navigation work independently of WebGL. Reduced-motion preferences skip camera travel. Fonts, illustrations, audio synthesis, and the résumé are served with the application.
+`src/room-layout.json` defines shared dimensions, pivots, and rail paths in metres. The Blender generator and runtime both read it. Rapier simulates free play on the deck. Guided paths carry the ball through the launch channel and between room stations. Three.js draws the room, follows the ball, and maps pointer input to physical objects. The monitor, switch, and archive content are in `src/room-stations.js`.
 
-## Publish
+## Review deployment
 
-The Vercel configuration builds with `npm run build` and serves `dist/`. The frontend requires no environment variables. Use `vercel deploy --prod` from the linked project, or Vercel’s GitHub integration.
+Vercel builds with `npm run build` and serves `dist/`. The frontend requires no environment variables. Use `vercel deploy` on the linked project for a review preview. The next creative decision is whether the opening scale, room lighting, and continuous camera journey are right for the expanded portfolio.
