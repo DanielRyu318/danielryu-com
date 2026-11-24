@@ -1,17 +1,18 @@
 import { createAudio } from './audio.js';
 import { icon } from './icons.js';
+import { STATION_IDS } from './room-layout.js';
 
 const $=s=>document.querySelector(s);
 const canvas=$('#room-view'),room=$('#room'),guide=$('#guide-panel'),cue=$('#cue'),hover=$('#hover');
 const audio=createAudio(), reduced=matchMedia('(prefers-reduced-motion:reduce)');
-const destinations=new Set(['projects','experience','table']);
-const labels={launch:'Pull the ball',projects:'Projects',experience:'Experience','resume-pdf':'Résumé PDF','play-mode':'Stay and play','explore-mode':'Explore the room',score:'Session score',deposit:'Add $500 deposit',fidelity:'Fidelity',nobe:'NOBE',katusa:'KATUSA'};
+const destinations=new Set(['table',...STATION_IDS]);
+const labels={launch:'Pull the ball',start:'Start a ball',projects:'Projects · desk',experience:'Experience · archive',education:'Education & credentials',contact:'Contact',resume:'Résumé',reader:'Collect a record','resume-pdf':'Open résumé PDF','play-mode':'Stay and play','explore-mode':'Explore the room',score:'Session score',deposit:'Add $500 deposit',fidelity:'Fidelity',nobe:'NOBE',katusa:'KATUSA'};
 let view,game,frame=0,last=0,awakeUntil=0,station='table',soundOn=false,drag=null,spaceStart=0,cueTimer;
 let fallback=null, lastRoll=null, lastPullSound=0;
 const keys=new Map();
 const actionButtons=new Map();
 const atSpring=()=>game && ['ready','station'].includes(game.state.mode);
-const isSpringAction=id=>id==='launch'||id==='return-projects'||id==='return-experience';
+const isSpringAction=id=>id==='launch'||Boolean(id?.startsWith('return-'));
 const charging=()=>game && ['pulling','station-pulling'].includes(game.state.mode);
 const hashStation=()=>{const id=location.hash.slice(1).split('/')[0];return destinations.has(id)?id:'table';};
 function announce(text){$('#live').textContent=text;}
@@ -37,8 +38,9 @@ document.addEventListener('keydown',unlock,{once:true});
 function actions(){
   if(!game||game.state.mode==='travel')return [];
   if(station!=='table')return view.stations.getControls().map(c=>c.action);
-  const ids=['projects','experience','resume-pdf','play-mode','explore-mode','score'];
+  const ids=[...STATION_IDS,'reader','resume-pdf','play-mode','explore-mode','score'];
   if(['ready','pulling'].includes(game.state.mode))ids.unshift('launch');
+  if(['ready','paused'].includes(game.state.mode))ids.push('start');
   return ids;
 }
 function controlLabel(id){
@@ -106,7 +108,8 @@ function onEvent(e){
     station=game.state.station||'table';
     const summary=view.stations.setStation(station);
     storeRoute(station);
-    showCue(station==='projects'?'Try the deposit on the monitor.':station==='experience'?'Select a job card.':game.state.mode==='paused'?'Your ball is waiting.':game.state.mode==='playing'?'Ball in play · Use the flippers.':'Drag the ball back to launch.',3500);
+    const cueText={projects:'Try the deposit on the monitor.',experience:'Select a job card.',education:'Press Actuarial exams to read the credentials.',resume:'Use the PDF key to open the résumé.',contact:'Choose a contact key.'};
+    showCue(cueText[station]||(game.state.mode==='paused'?'Your ball is waiting.':game.state.mode==='playing'?'Ball in play · Use the flippers.':'Drag the ball back to launch.'),3500);
     announce(summary||'At the flippers.');ui();wake();return;
   }
   if(e.type==='state'&&view&&game){
@@ -116,6 +119,10 @@ function onEvent(e){
     ui();wake();
   }
   if(e.type==='hit'&&!game?.state.explore)showCue(labels[e.station]+' lit. Select its entrance to visit.',2500);
+  if(e.type==='reader-select'){
+    showCue(labels[e.station]+' lit · Shoot the collector.',2800);
+    announce(labels[e.station]+' selected for the record reader.');
+  }
   if(e.type==='secret'){showCue('All three bells lit!',2000);}
 }
 async function goto(id,{instant=false,historyChange=false}={}){
@@ -133,8 +140,9 @@ async function goto(id,{instant=false,historyChange=false}={}){
 function act(id){
   if(!game||!view)return;
   if(id==='resume-pdf'){window.open('/daniel-ryu-resume.pdf','_blank','noopener');return;}
-  if(isSpringAction(id)){
-    if(id==='launch'&&game.state.mode==='paused')game.resume();
+  if(id==='reader'){goto(game.state.readerPage||'education');return;}
+  if(isSpringAction(id)||id==='start'){
+    if((id==='launch'||id==='start')&&game.state.mode==='paused')game.resume();
     else if(atSpring()){game.setPull(.72);game.release({instant:reduced.matches});}
     wake();return;
   }
@@ -145,7 +153,15 @@ function act(id){
   }
   if(id==='score'){showCue('Score '+game.state.score+'   ·   Balls launched '+game.state.stats.launches);return;}
   const result=view.stations.activate(id);
-  if(result){audio.play(result.sound);announce(result.announcement);if(result.navigate)goto(result.navigate);ui();wake(350);return;}
+  if(result){
+    if(result.url){
+      if(result.url.startsWith('mailto:'))location.href=result.url;
+      else window.open(result.url,'_blank','noopener');
+    }
+    audio.play(result.sound);announce(result.announcement);
+    if(result.navigate)goto(result.navigate);
+    ui();wake(350);return;
+  }
   if(destinations.has(id))goto(id);
 }
 function at(e){const b=canvas.getBoundingClientRect();return [e.clientX-b.left,e.clientY-b.top];}
@@ -233,8 +249,11 @@ async function showFallback(err){
   fallback=id=>{
     teardown?.();wrap.replaceChildren();
     if(id==='table'){
-      wrap.innerHTML='<h2>Daniel Ryu’s workshop</h2><p>The 3D room is unavailable in this browser. Explore the portfolio here.</p><button data-f="projects">Projects</button> <button data-f="experience">Experience</button> <a href="/daniel-ryu-resume.pdf">Résumé</a>';
-      for(const b of wrap.querySelectorAll('[data-f]'))b.onclick=()=>goto(b.dataset.f);
+      wrap.innerHTML='<h2>Daniel Ryu’s workshop</h2><p>The 3D room is unavailable in this browser. Explore the portfolio here.</p>';
+      for(const id of STATION_IDS){
+        const button=document.createElement('button');
+        button.textContent=labels[id];button.onclick=()=>goto(id);wrap.append(button);
+      }
     }else{
       const home=document.createElement('button');home.textContent='← Workshop';home.onclick=()=>goto('table');wrap.append(home);
       const section=document.createElement('div');wrap.append(section);

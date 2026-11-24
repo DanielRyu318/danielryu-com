@@ -1,6 +1,6 @@
 import './stations.css';
+import { indexLinks, records } from './room-index-data.js';
 
-const github = 'https://github.com/DanielRyu318';
 const money = new Intl.NumberFormat('en-US', {
   style: 'currency', currency: 'USD', maximumFractionDigits: 0,
 });
@@ -234,17 +234,30 @@ function scoreboard(body, { stats, secret, navigate }) {
   onward(body, 'table', 'Return to the machine', navigate);
 }
 
-function profile(body) {
-  body.innerHTML = title('Daniel Ryu', 'I study computer science and mathematics at the University of Illinois Urbana-Champaign.')
-    + `<dl class="st-details">
-        <div><dt>Education</dt><dd>B.S. in Computer Science + Mathematics<br>Expected May 2027</dd></div>
-        <div><dt>Selected work</dt><dd>Portfolio analytics on AWS, relational data pipelines and interactive 3D for the web.</dd></div>
-        <div><dt>Experience</dt><dd>Actuarial intern at Fidelity, software developer with NOBE, and KATUSA service.</dd></div>
-        <div><dt>GitHub</dt><dd>${external(github, 'github.com/DanielRyu318')}</dd></div>
-      </dl><a class="st-button" href="/daniel-ryu-resume.pdf" target="_blank" rel="noopener">Open résumé PDF <span aria-hidden="true">↗</span></a>`;
+function renderRecord(body,id) {
+  const r=records[id];
+  body.innerHTML=title(r.heading,[r.title,r.subtitle].filter(Boolean).join(' · '));
+  for(const text of r.lines) {
+    const p=document.createElement('p');p.textContent=text;body.append(p);
+  }
+  if(id==='education'){
+    const sub=document.createElement('h3');sub.textContent=records.exams.title;body.append(sub);
+    const list=document.createElement('ul');
+    records.exams.lines.forEach(text=>{const li=document.createElement('li');li.textContent=text;list.append(li);});
+    body.append(list);
+  }
+  for(const {action} of r.actions){
+    const item=indexLinks[action];
+    if(!item)continue;
+    const a=document.createElement('a');a.className='st-button';a.textContent=item.label;a.href=item.url;
+    if(!item.url.startsWith('mailto:')){a.target='_blank';a.rel='noopener';}
+    body.append(a,document.createTextNode(' '));
+  }
 }
 
-const stations = { projects: projectBench, experience: experienceBank, hobbies: rhythmBench, stats: scoreboard, resume: profile };
+const stations = { projects: projectBench, experience: experienceBank, hobbies: rhythmBench, stats: scoreboard,
+  education: body=>renderRecord(body,'education'), resume: body=>renderRecord(body,'resume'),
+  contact: body=>renderRecord(body,'contact') };
 const mounted = new WeakMap();
 
 export function renderStation(host, id, options = {}) {

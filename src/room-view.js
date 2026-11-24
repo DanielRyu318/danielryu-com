@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { ROOM_LAYOUT as layout, surfaceY } from './room-layout.js';
+import { ROOM_LAYOUT as layout, stationTrack, surfaceY } from './room-layout.js';
 import { createRoomStations } from './room-stations.js';
 import { cameraPoses, createCameraRide } from './room-camera.js';
 import hardware from './room-mechanisms.json' with { type: 'json' };
@@ -58,6 +58,38 @@ function signalGlow() {
   return new THREE.CanvasTexture(c);
 }
 
+// An illuminated start key gives the otherwise blank front service door a job.
+function serviceDoor() {
+  const door=new THREE.Group();
+  door.position.set(0,.687,.982);
+  door.rotation.x=.063;
+  const dark=material(0x29282c,.53,.54),rim=material(0xa87a49,.32,.66);
+  const keyMat=new THREE.MeshStandardMaterial({color:0xc88840,emissive:0xffa23c,roughness:.32});
+  const block=(w,h,d,x,y,z,finish)=>{
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),finish);
+    mesh.position.set(x,y,z);door.add(mesh);return mesh;
+  };
+  block(.35,.191,.012,0,0,0,rim);
+  block(.337,.179,.015,0,0,.005,dark);
+  block(.089,.062,.015,-.083,.027,.019,rim);
+  const key=block(.079,.051,.009,-.083,.027,.031,keyMat);
+  const c=document.createElement('canvas');c.width=192;c.height=96;
+  const ctx=c.getContext('2d');ctx.font='bold 43px sans-serif';ctx.fillStyle='#321e15';
+  ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('START',96,49);
+  const lettering=new THREE.Mesh(new THREE.PlaneGeometry(.075,.045),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c),transparent:true,depthWrite:false}));
+  lettering.position.copy(key.position);lettering.position.z+=.0048;door.add(lettering);
+  block(.097,.027,.008,.069,.045,.016,rim);
+  block(.072,.007,.008,.069,.045,.021,dark);
+  block(.102,.050,.010,.069,-.037,.016,rim);
+  block(.090,.038,.011,.069,-.037,.019,dark);
+  const fastener=new THREE.CylinderGeometry(.005,.005,.004,12);
+  for(const x of [-.15,.15])for(const y of [-.072,.072]){
+    const screw=new THREE.Mesh(fastener,rim);screw.rotation.x=Math.PI/2;screw.position.set(x,y,.016);door.add(screw);
+  }
+  for(const mesh of [key,lettering])mesh.userData.action='start';
+  return {door,key,lettering,illuminate(ready){keyMat.emissiveIntensity=ready?.54:.08;}};
+}
+
 function scoreDrums(model) {
   const c=document.createElement('canvas');c.width=640;c.height=160;
   const ctx=c.getContext('2d'),texture=new THREE.CanvasTexture(c);
@@ -83,65 +115,30 @@ function scoreDrums(model) {
   };
 }
 
-function bankInserts(scene) {
-  const panel = new THREE.Group();
-  panel.position.set(-.033, surfaceY(.279) + .0017, .279);
-  panel.rotation.x = -Math.PI / 2 + Math.atan(layout.deck.slope);
-  const c = document.createElement('canvas');
-  c.width = 768; c.height = 288;
-  const ctx = c.getContext('2d');
-  // The printed bonus and its three lenses are flush with the enamel.
-  const outline = new Path2D('M 14 116 L 185 32 Q 384 -8 583 32 L 754 116 L 567 250 Q 384 289 201 250 Z');
-  ctx.fillStyle = '#253d39'; ctx.fill(outline);
-  ctx.lineWidth = 6; ctx.strokeStyle = '#cea258'; ctx.stroke(outline);
-  for (const mirror of [false,true]) {
-    ctx.save();
-    if (mirror) { ctx.translate(c.width,0); ctx.scale(-1,1); }
-    ctx.beginPath(); ctx.moveTo(65,120); ctx.lineTo(175,75);
-    ctx.moveTo(82,133); ctx.lineTo(161,104); ctx.stroke(); ctx.restore();
-  }
-  ctx.textAlign = 'center'; ctx.fillStyle = '#ffe3a3'; ctx.font = 'bold 50px Georgia';
-  ctx.fillText('BANK BONUS 500',384,216);
-  const print = new THREE.CanvasTexture(c);
-  print.colorSpace = THREE.SRGBColorSpace;
-  panel.add(new THREE.Mesh(new THREE.PlaneGeometry(.254,.096),
-    new THREE.MeshBasicMaterial({map:print,transparent:true,depthWrite:false})));
-  const diamond = new THREE.Shape();
-  diamond.moveTo(0,.0125); diamond.lineTo(.014,0); diamond.lineTo(0,-.0125);
-  diamond.lineTo(-.014,0); diamond.closePath();
-  const geometry = new THREE.ShapeGeometry(diamond);
-  const lamps = hardware.dropBank.targets.map(({id},i)=>{
-    const lens = new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({
-      color:0xda8231,emissive:0xffa745,emissiveIntensity:.31,roughness:.3,metalness:.12
-    }));
-    lens.position.set((i-1)*.044,.012 + (i===1?.003:0),.001);
-    panel.add(lens);
-    return {id,material:lens.material};
-  });
-  scene.add(panel);
-  return drops=>{
-    for(const lamp of lamps)lamp.material.emissiveIntensity=.31+2.8*drops[lamp.id];
-  };
-}
-
 function lightRoom(scene) {
-  scene.add(new THREE.HemisphereLight(0xc7d1e2,0x5e4838,.32));
-  const window = new THREE.DirectionalLight(0xa6c5e7,.55);
+  scene.add(new THREE.HemisphereLight(0xaebbd6,0x714d44,.26));
+  const window = new THREE.DirectionalLight(0x9ebbed,.42);
   window.position.set(-.4,3.0,-3);
   scene.add(window);
   const desk = (x,y,z,power,color,tx,ty,tz,shadow=false) => {
-    const lamp = new THREE.SpotLight(color,power,8,1.10,.65,2);
+    const lamp = new THREE.SpotLight(color,power,8,shadow ? .87 : 1.02,.79,2);
     lamp.position.set(x,y,z); lamp.target.position.set(tx,ty,tz);
     lamp.castShadow = shadow;
     if (shadow) { lamp.shadow.mapSize.set(1536,1536); lamp.shadow.normalBias=.002; lamp.shadow.bias=-.00012; }
     scene.add(lamp,lamp.target);
+    return lamp;
   };
-  desk(-.55,2.55,.46,6,0xffbf86,0,.85,-.10,true);
-  desk(-.55,1.53,-.57,1.55,0xffc16b,-.24,.92,-.09);
-  desk(-1.93,1.72,-.79,2.8,0xffc781,-1.75,.92,-1.00);
-  desk(2.42,1.90,-.63,3.6,0xffc184,1.77,1.24,-.95);
+  const cabinet=desk(-.68,2.70,.65,7.7,0xffdbad,0,.88,-.09,true);
+  desk(1.05,2.23,-1.17,1.7,0x9abef6,.14,1.03,-.13);
+  const monitor=desk(-1.93,1.72,-.79,2.8,0xffc781,-1.75,.92,-1.00);
+  const press=desk(2.42,1.90,-.63,3.6,0xffc184,1.77,1.24,-.95);
   const fill = new THREE.PointLight(0xffb883,.55,2.6);
   fill.position.set(.69,1.55,.72);scene.add(fill);
+  return (projects,experience)=>{
+    cabinet.intensity=7.7-2.4*Math.max(projects,experience);
+    monitor.intensity=.34+projects*2.55;
+    press.intensity=.31+experience*3.35;
+  };
 }
 
 export async function createRoomView(canvas) {
@@ -162,22 +159,27 @@ export async function createRoomView(canvas) {
   scene.environment=environment.texture;
   scene.environmentIntensity=.19;
   roomEnvironment.dispose();pmrem.dispose();
-  lightRoom(scene);
+  const lightStations=lightRoom(scene);
   const camera=new THREE.PerspectiveCamera(28,1,.02,26);
   const gltf=await new GLTFLoader().loadAsync('/models/workshop.glb');
   const model=gltf.scene;
   scene.add(model);
+  const finishedMaterials=new Set();
   model.traverse(obj=>{
     if (!obj.isMesh) return;
     obj.receiveShadow=true;
     obj.castShadow=true;
     const mats=Array.isArray(obj.material)?obj.material:[obj.material];
     for (const mat of mats) {
+      if(finishedMaterials.has(mat))continue;
+      finishedMaterials.add(mat);
       if(mat.map) mat.map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
       if(mat.name==='woodGrain'){
         mat.color.set(0xb28c78);mat.bumpMap=mat.map;mat.bumpScale=.00065;
       }
-      if(mat.name==='field')mat.color.set(0xc4d4d1);
+      if(mat.name==='field')mat.color.set(0xffffff);
+      if(mat.name==='wall'||mat.name==='wallShade')mat.color.multiply(new THREE.Color(0xb5b3ca));
+      if(/^floor[A-D]$/.test(mat.name))mat.color.multiply(new THREE.Color(0xd2b9bf));
     }
   });
   const byName=name=>model.getObjectByName(name);
@@ -216,15 +218,34 @@ export async function createRoomView(canvas) {
   const contactShadow=new THREE.Mesh(new THREE.PlaneGeometry(.11,.11),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(shadeCanvas),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}));
   contactShadow.rotation.x=-Math.PI/2;
   scene.add(ball,coil,contactShadow,...flippers);
-  const named={Pick_Projects:'projects',Pick_Experience:'experience',Pick_Resume:'resume-pdf',Pick_Play:'play-mode',Pick_Explore:'explore-mode',Pick_Score:'score'};
+  const named={
+    Pick_Projects:'projects',Pick_Experience:'experience',Pick_Education:'education',Pick_Record:'resume',
+    Pick_Contact:'contact',Pick_Collector:'reader',Pick_Resume:'resume-pdf',Pick_Play:'play-mode',
+    Pick_Explore:'explore-mode',Pick_Score:'score',Rollover_West:'resume',Rollover_East:'contact',
+    Drop_1:'education',Drop_2:'education',Drop_3:'education',
+    Pick_Desk_Sign:'projects',Pick_Archive_Sign:'experience'
+  };
   const interactive=[ball,...stations.pickables];
+  const tableAnchors=new Map();
+  const service=serviceDoor();
+  scene.add(service.door);interactive.push(service.key,service.lettering);
+  tableAnchors.set('start',service.key.getWorldPosition(new THREE.Vector3()));
   for(const [name,action] of Object.entries(named)){
     const root=byName(name);
-    root?.traverse(obj=>{if(obj.isMesh){obj.userData.action=action;interactive.push(obj);}});
+    if(!root)continue;
+    root.traverse(obj=>{if(obj.isMesh){obj.userData.action=action;interactive.push(obj);}});
+    if(!tableAnchors.has(action))tableAnchors.set(action,new THREE.Box3().setFromObject(root).getCenter(new THREE.Vector3()));
   }
+  // Focus follows the inscription, even when its assembly includes a long guide rail.
+  for(const [id,x,z] of [
+    ['projects',-.278,.064],['experience',.19,-.483],['education',-.235,.204],
+    ['contact',.106,.443],['resume',-.179,.443]
+  ])tableAnchors.set(id,v(x,surfaceY(z)+.015,z));
+  const bankDial=byName('Bank_Dial');
+  const captive=byName(hardware.captive.node),captiveSpring=byName(hardware.captive.springNode);
+  const captiveRest=captive?.position.clone(),springLength=captiveSpring?.scale.z;
   const swivel=byName('Projects_CRT_Swivel');
   const updateScore=scoreDrums(model);
-  const updateBank=bankInserts(scene);
   const lever=new THREE.Group();
   const leverFoot=new THREE.Mesh(new THREE.CylinderGeometry(.019,.025,.012,24),palette.brass);
   const leverStem=new THREE.Mesh(new THREE.CylinderGeometry(.0045,.007,.063,16),palette.brass);
@@ -233,30 +254,13 @@ export async function createRoomView(canvas) {
   leverKnob.position.y=.064;lever.add(leverFoot,leverStem,leverKnob);
   lever.position.set(.385,.958,.737);scene.add(lever);
   const lampTexture=signalGlow();
-  const lantern=byName('Pick_Hobbies');
-  const signalPivot=new THREE.Group();
-  const lampPos=layout.anchors.hobbies;
-  signalPivot.position.set(lampPos[0],surfaceY(lampPos[2]),lampPos[2]);scene.add(signalPivot);
-  if(lantern){model.updateMatrixWorld(true);signalPivot.attach(lantern);}
   const glow = (pos,scale,intensity) => {
     const s=new THREE.Sprite(new THREE.SpriteMaterial({map:lampTexture,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false,opacity:intensity,toneMapped:false}));
     s.position.copy(pos);s.scale.setScalar(scale);scene.add(s);return s;
   };
-  glow(signalPivot.position.clone().add(v(0,.087,0)),.145,.61);
   const routeLamps=[];
-  const mobilePlates=[];
-  for(const [id,path] of Object.entries(layout.routes)){
-    const label=document.createElement('canvas');label.width=640;label.height=116;
-    const painter=label.getContext('2d');
-    painter.fillStyle=id==='projects'?'#153f3f':'#6b302b';painter.fillRect(0,0,640,116);
-    painter.strokeStyle='#c4975d';painter.lineWidth=8;painter.strokeRect(4,4,632,108);
-    painter.fillStyle='#ffeacc';painter.font='bold 67px Georgia';painter.textAlign='center';painter.textBaseline='middle';
-    painter.fillText(id.toUpperCase(),320,62,605);
-    const texture=new THREE.CanvasTexture(label);texture.colorSpace=THREE.SRGBColorSpace;
-    const plate=new THREE.Mesh(new THREE.PlaneGeometry(.272,.052),new THREE.MeshBasicMaterial({map:texture,toneMapped:false}));
-    const [px,pz]=layout.gates[id].center;
-    plate.position.set(px,surfaceY(pz+.144)+.006,pz+.144);plate.rotation.x=-Math.PI/2+.065;
-    plate.userData.action=id;scene.add(plate);interactive.push(plate);mobilePlates.push(plate);
+  const paths={...layout.routes,reader:layout.reader.route};
+  for(const [id,path] of Object.entries(paths)){
     path.forEach(([x,y,z],i)=>{
       const m=new THREE.MeshStandardMaterial({color:0xc79958,emissive:0xff9e46,emissiveIntensity:.16,roughness:.39});
       const base=new THREE.Mesh(new THREE.SphereGeometry(.008,12,8),m);
@@ -284,7 +288,6 @@ export async function createRoomView(canvas) {
     renderer.setSize(width,height,false);
     camera.aspect=aspect;
     poses=cameraPoses(aspect);
-    for(const plate of mobilePlates)plate.visible=aspect<.8;
     if (!activeTravel) snap(station);
     else { activeTravel=null; camera.updateProjectionMatrix(); }
   }
@@ -321,18 +324,21 @@ export async function createRoomView(canvas) {
   };
   function actionPosition(action) {
     if(action==='launch')return ball.position;
-    if(action.startsWith('return-'))return stations.actionPosition(action);
+    if(station!=='table'){
+      const exact=stations.actionPosition(action);
+      if(exact)return exact;
+    }
     const s=stations.pickables.find(mesh=>mesh.userData.action===action);
     if(s && station!=='table')return s.getWorldPosition(new THREE.Vector3());
-    const namedObj=interactive.find(obj=>obj.userData.action===action&&!stations.pickables.includes(obj));
-    if(namedObj) return new THREE.Box3().setFromObject(namedObj).getCenter(new THREE.Vector3());
-    return fallbacks[action];
+    return tableAnchors.get(action)||fallbacks[action];
   }
   const ray=new THREE.Raycaster();
   function pick(x,y,actions) {
     ray.setFromCamera({x:x/width*2-1,y:1-y/height*2},camera);
     const hits=ray.intersectObjects(interactive,false);
     for(const hit of hits) {
+      let ancestor=hit.object;while(ancestor?.visible)ancestor=ancestor.parent;
+      if(ancestor)continue;
       const action=hit.object===ball&&station!=='table'?'return-'+station:hit.object.userData.action;
       if(actions.includes(action))return action;
     }
@@ -347,11 +353,20 @@ export async function createRoomView(canvas) {
   }
   function draw(state) {
     const b=state.ball;ball.position.set(b.x,b.y,b.z);
-    for(const id of ['projects','experience'])stations.setReturnPull('return-'+id,state.station===id?state.pull:0);
+    service.illuminate(state.mode==='ready'||state.mode==='paused');
+    if(state.station!=='table')stations.setReturnPull('return-'+state.station,state.pull);
+    stations.update?.();
     for(const {id,blade,raised} of blades)blade.position.y=raised-.054*state.mechanisms.drops[id];
+    if(bankDial)bankDial.rotation.y=-Math.PI*.5*Object.values(state.mechanisms.drops).reduce((sum,level)=>sum+level,0);
+    if(captive){
+      const travel=state.mechanisms.captive;
+      captive.position.z=captiveRest.z-travel;
+      captive.position.y=captiveRest.y+layout.deck.slope*travel;
+      const span=hardware.captive.z-hardware.captive.radius-hardware.captive.rearAnchorZ;
+      if(captiveSpring)captiveSpring.scale.z=springLength*(1-travel/span);
+    }
     spinner.rotation.x=axleRest+state.mechanisms.spin;
     for(const {id,lens,idle} of rolloverLamps)lens.emissiveIntensity=Math.max(.22,idle)+2.8*state.mechanisms.rollovers[id];
-    updateBank(state.mechanisms.drops);
     for(const {button,rest,side} of buttons)
       button.position.x=rest+(state.flippers[side].held?(side==='left'?.007:-.007):0);
     contactShadow.position.set(b.x,surfaceY(b.z)+.0035,b.z);
@@ -360,11 +375,10 @@ export async function createRoomView(canvas) {
     const springEnd=layout.launcher.z+.02+(state.station==='table'?state.pull:0)*layout.launcher.pullDistance;
     coil.scale.z=Math.max(.035,.855-springEnd);
     lever.rotation.x=state.explore?.46:-.46;
-    signalPivot.rotation.y=(state.travel?.to==='experience'?1:-1)*.32+Math.sin(state.score*.017)*.43;
     updateScore(state.score);
     const trip=state.travel;
     for(const {id,m,halo,position} of routeLamps){
-      const onWire=trip&&!trip.crossing&&(trip.to===id||trip.from===id);
+      const onWire=trip&&!trip.crossing&&(stationTrack(trip.to)===id||stationTrack(trip.from)===id);
       const lit=onWire?1-THREE.MathUtils.smoothstep(ball.position.distanceTo(position),.045,.22):0;
       m.emissiveIntensity=.11+lit*2.6;halo.material.opacity=.02+lit*.72;
     }
@@ -380,6 +394,7 @@ export async function createRoomView(canvas) {
     if(carriage)carriage.position.y=carriageStart.y+.025*atStation('experience');
     if(projectCup)projectCup.position.y=projectCupY-.009*atStation('projects');
     if(experienceCup)experienceCup.position.y=experienceCupY-.009*atStation('experience');
+    lightStations(atStation('projects'),atStation('experience'));
     travelCamera(state);
     renderer.render(scene,camera);
   }

@@ -1,8 +1,8 @@
-# Daniel Ryu’s Pinball Workshop
+# Night Shift · Daniel Ryu’s Pinball Workshop
 
 The pinball machine and the room are the website.
 
-This playable review build follows one journey through the workshop. The Projects rail takes a steel ball from the cabinet to a desk where a CRT runs a Cline Financial demo. From the desk, a brass switch sends the ball to an Experience archive across the room.
+Night Shift is a playable observatory cabinet in a timber workshop. The desktop camera looks straight down the centreline from the flippers. The Projects wire ramp carries the ball to a Cline Financial desk. The Experience tunnel leads to the archive. An illuminated reader in the backbox serves Education and Credentials, Résumé, and Contact.
 
 ## Run locally
 
@@ -19,22 +19,24 @@ Run `npm test` for the physics regression suite. Use `npm run build` and `npm ru
 
 - Drag the ball against the spring, then release. On a keyboard, hold and release Space to launch and press the arrow keys to flip. Touch devices have left and right flipper buttons.
 - In Explore mode, take a destination shot or select its labeled entrance on the cabinet. In Play mode, a shot lights its destination and leaves the ball in play.
-- Knock down all three telegraph blades to light the bank inserts and score a 500-point bonus. The rear spinner and two rollover arrows also score when the ball crosses them.
+- Knock down all three telegraph blades to advance the ratchet dial, score a 500-point bonus, and arm Education. The west and east rollover lanes arm Résumé and Contact. Shoot the upper collector for the selected record in Explore mode. Selecting any destination on the table calls it directly.
+- The spinner and spring-loaded captive ball score independently. The illuminated START key launches a ready ball.
 - At the desk, add a $500 deposit on the monitor and compare the balance and time-weighted return. Use the physical Experience switch to continue to the archive.
-- Select a job card to read its entry. Both stations have a return plunger beside the ball cup. Pull the handle away from the cup and release it to send the ball back through its entrance into free play. Space also charges the station spring.
+- Select a job card to read its entry. The reader, project desk, and archive each have a return plunger. Pull it away from its cup and release to send the ball back into free play. Space also charges the spring.
+- At the reader, the Education selector opens the academic record and the exams key reveals the passed actuarial exams. The other keys open the original résumé PDF, email composer, LinkedIn or GitHub. The PDF key on the apron also opens the résumé immediately.
 - To restore the exact shot you left, use **Back to the flippers** and **Resume ball**.
-- The workshop guide provides keyboard access to destinations, station controls, and the résumé. Direct links include `/#projects/cline-financial` and `/#experience`. Reduced motion skips camera travel. The sound control enables the synthesized machine audio.
+- The guide provides keyboard access to destinations and station controls. Shareable routes include `/#projects/cline-financial`, `/#experience`, `/#education`, `/#resume`, and `/#contact`. Reduced motion skips camera travel. The sound control enables synthesized machine audio.
 
 ## Scene and mechanics
 
-`art/workshop.blend` is the editable Blender scene. The browser loads the optimized `public/models/workshop.glb`. To regenerate both, use Python with Pillow and Blender 5.3 from the repository root.
+`art/workshop.blend` is the editable Blender scene. The browser loads the optimized `public/models/workshop.glb`. The playfield uses an original generated lithograph in `art/night-shift-print.webp`, overprinted with mechanical markings at build time. To regenerate the scene and browser asset, use Python with Pillow and Blender 5.3 from the repository root.
 
 ```sh
 python scripts/paint_workshop.py
 blender --background --python scripts/build_workshop.py
 ```
 
-`src/room-layout.json` and `src/room-mechanisms.json` define shared dimensions, pivots, and rail paths in metres. The Blender generator and runtime both read them. Rapier simulates free play on the deck. Guided paths carry the ball through the launch channel and between room stations. Three.js draws the room, follows the ball, and maps pointer input to physical objects. `src/room-camera.js` fits the whole cabinet in landscape and follows the rails between stations. The monitor, switches, and archive content are in `src/room-stations.js`.
+`src/room-layout.json` and `src/room-mechanisms.json` define shared dimensions, pivots, and rail paths in metres. The Blender generator and runtime both read them. Rapier simulates free play and the captive-ball spring. Guided paths carry the ball through the launch channel and between room stations. Three.js draws the room, follows the ball, and maps pointer input to physical objects. `src/room-camera.js` fits the cabinet and follows the rails. The monitor and archive are in `src/room-stations.js`. The reader and text fallback share the verified records in `src/room-index-data.js`.
 
 ## Review deployment
 

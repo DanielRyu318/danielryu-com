@@ -1,9 +1,10 @@
-"""Paint the original signal cabinet graphics and dusk-window scenery."""
+"""Print the Night Shift cabinet graphics and paint the dusk-window scenery."""
 import math
 import random
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
+from paint_observatory import field_print
 
 OUT = Path(__file__).resolve().parents[1] / "output" / "workshop-textures"
 OUT.mkdir(parents=True, exist_ok=True)
@@ -48,87 +49,6 @@ def ridgeline(w, y, amp, frequency):
     return [(x, y + amp*(math.sin(x*frequency)+.38*math.sin(x*frequency*3.3+1.9)+.13*math.cos(x*.085))) for x in range(-12,w+20,6)]
 
 
-def cabin(draw,x,y,size):
-    s=size
-    draw.polygon([(x,y-s*.54),(x+s*.34,y-s*.81),(x+s*.71,y-s*.53),(x+s*.71,y),(x,y)],fill="#ebb378")
-    draw.polygon([(x+s*.71,y-s*.53),(x+s*1.10,y-s*.64),(x+s*1.1,y-s*.14),(x+s*.71,y)],fill="#a97153")
-    draw.polygon([(x-.08*s,y-s*.52),(x+.34*s,y-.89*s),(x+.79*s,y-.54*s),(x+.68*s,y-.48*s),(x+.34*s,y-.74*s),(x+.02*s,y-.45*s)],fill="#f1d099")
-    draw.polygon([(x+.34*s,y-.89*s),(x+.72*s,y-.99*s),(x+1.2*s,y-.65*s),(x+.79*s,y-.54*s)],fill="#546863")
-    for dx in [.12,.43]:
-        draw.rectangle((x+dx*s,y-.4*s,x+(dx+.10)*s,y-.22*s),fill="#fff1aa")
-    draw.rectangle((x+.295*s,y-.27*s,x+.39*s,y),fill="#475751")
-
-
-def landscape():
-    w,h=1024,1792
-    image=Image.new("RGB",(w,h))
-    sky(image,[(0,(11,33,45)),(.36,(17,51,57)),(.70,(24,65,64)),(1,(14,42,43))])
-    d=ImageDraw.Draw(image)
-    # A screen-printed alpine night stretches from the back bank to the apron.
-    d.ellipse((553,91,653,191),fill="#ebcb94")
-    for _ in range(135):
-        x,y=RNG.randint(40,990),RNG.randint(35,650)
-        star(d,x,y,RNG.randrange(2,8),"#d8ba82")
-    for y,amp,col in [(338,72,"#345760"),(369,55,"#597770"),(416,72,"#839185"),(467,49,"#47695f"),(501,40,"#294e4b")]:
-        ridge=ridgeline(w,y,amp,.0087+y*.000007)
-        d.polygon(ridge+[(w+10,y+94),(-10,y+94)],fill=col)
-    # Reverse ink below the horizon leaves open areas for the ball and bell mechanisms.
-    for i in range(39):
-        x=i*28-15
-        pine(d,x,543+18*math.sin(i*.46),RNG.randint(28,77),"#153638")
-    for i in range(4):
-        pts=[(x,1058+56*math.sin(x*.006+1.5)+i*12+13*math.sin(x*.019)) for x in range(0,w,4)]
-        d.line(pts,fill=["#b4ad88","#789587","#9fa98c","#739387"][i],width=2)
-    moon_ridge=[(x,1110+64*math.sin(x*.006+1.5)+13*math.sin(x*.019)) for x in range(-10,w+20,4)]
-    d.polygon(moon_ridge+[(w+10,1285),(-10,1285)],fill="#748d80")
-    next_ridge=ridgeline(w,1170,35,.011)
-    d.polygon(next_ridge+[(w+10,1330),(-10,1330)],fill="#426e63")
-    for i in range(34):
-        x=i*35+RNG.randrange(-9,12);base=1205+22*math.sin(x*.012)
-        pine(d,x,base,RNG.randrange(23,70),"#1b423f")
-    for side in [0,1]:
-        for i in range(17):
-            x=RNG.randint(12,410) if side==0 else RNG.randint(647,994)
-            base=1290+43*math.sin(x*.011)
-            tree_height=RNG.randrange(45,117)
-            pine(d,x,base,tree_height,"#103332")
-            # Pencil-thin sunset ink picks up only the upper branches on the western edge.
-            d.line((x-1,base-tree_height+4,x-tree_height*.082,base-tree_height*.74),fill="#5a786c",width=2)
-    cabin(d,605,1253,57);cabin(d,685,1223,31)
-    for x,y,size in [(472,437,23),(497,437,17),(388,454,12)]:cabin(d,x,y,size)
-    # A meandering river and riverbank hatching retain their silhouettes at phone scale.
-    river=[(571,1207),(531,1241),(545,1264),(600,1287),(612,1304),(560,1332),(453,1354),(404,1380),(410,1402)]
-    d.line(river,fill="#b8b59a",width=14,joint="curve")
-    d.line([(x-3,y-4) for x,y in river],fill="#73998b",width=6,joint="curve")
-    for _ in range(44):
-        x,y=RNG.randrange(40,1005),RNG.randrange(1310,1375)
-        d.line((x,y,x+RNG.randrange(4,18),y-1),fill="#739586",width=2)
-    cx,cy=466,1642
-    for i in range(23):
-        a=math.radians(190+i*7.1)
-        r1,r2=77,183 if i%2==0 else 155
-        points=[(cx+math.cos(a+delta)*r,cy+math.sin(a+delta)*r*.71) for delta,r in [(-.022,r1),(-.035,r2),(.035,r2),(.022,r1)]]
-        d.polygon(points,fill="#d3b178" if i%2==0 else "#95a28b")
-    for inset,width,color in [(14,4,"#c6a86e"),(24,2,"#9d9e7d")]:
-        d.rounded_rectangle((inset,inset,w-inset,h-inset),radius=32,outline=color,width=width)
-    for x,y,r in [(301,471,87),(468,990,62),(579,588,70),(716,794,61)]:
-        for off in [0,7,14]:d.ellipse((x-r-off,y-r-off,x+r+off,y+r+off),outline="#9e9873",width=2)
-        for i in range(20):
-            a=i*math.tau/20;rr=r+20;rl=rr+(7 if i%5==0 else 3)
-            d.line((x+math.cos(a)*rr,y+math.sin(a)*rr,x+math.cos(a)*rl,y+math.sin(a)*rl),fill="#b6a67d",width=2)
-    # Light sweeps from the lantern are a recurring engraved motif.
-    for radius,start,end in [(57,194,333),(65,204,329),(74,214,319)]:
-        d.arc((301-radius,471-radius,301+radius,471+radius),start,end,fill="#e0bb81",width=3)
-    for i in range(18):
-        x=RNG.randint(81,900);y=RNG.randint(650,1030)
-        if i%3==0:star(d,x,y,RNG.randint(6,12),"#b9a477")
-    # Print alignment marks, a few large star cutouts, and calibrated lane markings.
-    for x,y,r in [(756,596,16),(315,954,13),(847,1034,18),(139,879,11),(413,482,12)]:
-        star(d,x,y,r,"#d7c193")
-    for i in range(7):d.line((892,1460+i*15,909+(i%2)*7,1460+i*15),fill="#b59e72",width=2)
-    image.save(OUT/"field.jpg",quality=95,subsampling=0,optimize=True)
-
-
 def grain():
     w,h=1024,256;im=Image.new("RGB",(w,h));d=ImageDraw.Draw(im)
     for y in range(h):
@@ -157,22 +77,57 @@ def night_window():
 
 def type_texture(filename,text,background,ink,serif=False,frame=True):
     w,h=704,170;im=Image.new("RGB",(w,h),background);d=ImageDraw.Draw(im)
+    station_plate=filename in {'projects','experience','record','education','contact','projectDesk','workArchive'}
     if frame:
-        d.rounded_rectangle((7,7,w-8,h-8),18,outline=ink,width=3)
-        d.rounded_rectangle((15,15,w-16,h-16),13,outline=ink,width=1)
-    f=font(88,serif)
+        d.rounded_rectangle((6,6,w-7,h-7),12,outline=ink,width=2 if station_plate else 3)
+        if not station_plate:d.rounded_rectangle((15,15,w-16,h-16),13,outline=ink,width=1)
+    secondary={'projects':'TO DESK','experience':'TO ARCHIVE'}.get(filename)
+    if station_plate:
+        # Fit the visible cap and accent strokes to the brass inlay. Default
+        # font-box centering wastes most of the face at a player's viewing angle.
+        face=font(170)
+        left,top,right,bottom=face.getbbox(text)
+        glyph=Image.new('L',(right-left,bottom-top));gd=ImageDraw.Draw(glyph)
+        gd.text((-left,-top),text,font=face,fill=255)
+        wh=(w-44,94 if secondary else 120)
+        glyph=glyph.resize(wh,Image.Resampling.LANCZOS)
+        im.paste(ink,(22,18 if secondary else int((h-wh[1])/2)),glyph)
+        if secondary:
+            d.text((w/2,137),secondary,font=font(32),fill=ink,anchor="mm")
+        im.save(OUT/(filename+".png"),optimize=True)
+        return
+    f=font(98,serif)
     while d.textlength(text,font=f)>w-58:
         f=font(f.size-2,serif)
-    d.text((w/2,h*.50),text,font=f,fill=ink,anchor="mm",stroke_width=0)
+    d.text((w/2,h*.50),text,font=f,fill=ink,anchor="mm")
     im.save(OUT/(filename+".png"),optimize=True)
+
+def bonus_scale():
+    im=Image.new('RGB',(384,384),'#253c48');d=ImageDraw.Draw(im)
+    d.ellipse((10,10,374,374),fill='#b38358',outline='#f0cf8b',width=4)
+    d.ellipse((23,23,361,361),fill='#233b4d',outline='#e3ac74',width=3)
+    d.pieslice((32,32,352,352),158,204,fill='#b35843')
+    for i in range(48):
+        a=(i/48)*math.tau;rr=153 if i%4 else 143
+        d.line((192+rr*math.cos(a),192+rr*math.sin(a),192+159*math.cos(a),192+159*math.sin(a)),fill='#f0d59e',width=3)
+    for i,roman in enumerate(['0','I','II','III']):
+        a=i*math.pi/2-math.pi/2
+        d.text((192+103*math.cos(a),192+102*math.sin(a)),roman,font=font(47,True),fill='#ffe7ae',anchor='mm')
+    d.ellipse((163,163,221,221),outline='#c2ae82',width=3)
+    im.save(OUT/'dial.png',optimize=True)
 
 
 if __name__=="__main__":
-    landscape();grain();night_window()
+    field_print(OUT);grain();night_window();bonus_scale()
     for name,text,paper,ink,serif in [
-        ("projects","PROJECTS","#174949","#f7daa1",True),
-        ("experience","EXPERIENCE","#702f31","#fde0ab",True),
-        ("resume","RÉSUMÉ","#ead8b7","#513e2e",True),
+        ("projects","PROJECTS","#245254","#ffe5b1",False),
+        ("experience","EXPERIENCE","#773e3e","#ffe5ae",False),
+        ("resume","PDF  ↗","#ead8b7","#513e2e",False),
+        ("record","RÉSUMÉ","#314e67","#ffe5b1",False),
+        ("education","EDUCATION","#344d65","#ffe5b1",False),
+        ("contact","CONTACT","#245958","#ffe5b1",False),
+        ("projectDesk","PROJECT DESK","#183e43","#ffe3ac",False),
+        ("workArchive","EXPERIENCE ARCHIVE","#65383a","#ffe3ac",False),
         ("pull","PULL","#af7849","#35291b",False),
         ("play","PLAY","#caa15c","#302d22",False),
         ("explore","EXPLORE","#caa15c","#302d22",False),

@@ -1,4 +1,5 @@
 import { CatmullRomCurve3, MathUtils, Vector3 } from 'three';
+import { isReaderStation } from './room-layout.js';
 
 const v = (x, y, z) => new Vector3(x, y, z);
 const blend = MathUtils.smoothstep;
@@ -11,12 +12,14 @@ const cabinetExtents = [
   [-.58, .97, .98], [.58, .97, .98],
   [-.58, 1.08, -.96], [.58, 1.08, -.96],
   [-.16, 1.23, -.91], [.16, 1.23, -.91],
-  [-.60, 1.28, -.62], [.47, 1.17, -.85],
+  [-.46, 1.60, -1.04], [.46, 1.60, -1.04],
 ].map(point => v(...point));
 
 function desktopTable(aspect) {
-  const eye = v(-.21, 2.64, 1.94);
-  const look = v(0, .73, .05);
+  // Keep the optical axis on the longitudinal centreline. A longer lens
+  // preserves the maker's rectangular layout from the player's position.
+  const eye = v(0, 3.60, 3.34);
+  const look = v(0, .83, 0);
   const forward = look.clone().sub(eye).normalize();
   const right = forward.clone().cross(v(0, 1, 0)).normalize();
   const up = right.clone().cross(forward);
@@ -30,17 +33,23 @@ function desktopTable(aspect) {
   const center = Math.atan((maxY + minY) / 2);
   look.copy(eye).addScaledVector(forward, 2.8).addScaledVector(up, Math.tan(center) * 2.8);
   const halfHeight = Math.max((maxY - minY) / 1.83, ...extents.map(p => Math.abs(p.x) / (.88 * aspect)));
-  return pose(eye, look, MathUtils.radToDeg(2 * Math.atan(halfHeight)));
+  return pose(eye, look, MathUtils.radToDeg(2 * Math.atan(halfHeight)), 2.48);
 }
 
 export function cameraPoses(aspect) {
   const portrait = aspect < .8;
-  const focus = v(.026, .94, .055);
+  const focus = v(0, 1, -.04);
   const pitch = Math.asin(MathUtils.clamp(.58 / aspect, .25, .97)) - .035;
-  const offset = v(-.058, Math.sin(pitch), Math.cos(pitch)).normalize().multiplyScalar(3.75);
-  const fittedPortrait = MathUtils.radToDeg(2 * Math.atan(Math.max(1.38 / aspect, 1.78 * Math.sin(pitch) + .14) / 7.5));
+  const offset = v(0, Math.sin(pitch), Math.cos(pitch)).multiplyScalar(3.75);
+  const fittedPortrait = MathUtils.radToDeg(2 * Math.atan(Math.max(1.42 / aspect, 1.87 * Math.sin(pitch) + .24) / 7.5));
+  const readerLook = v(-.145, 1.315, -.965);
+  const readerDistance = Math.max(1.30, 1.24 / aspect);
+  const readerEye = readerLook.clone().addScaledVector(v(0,.45,.893),readerDistance);
+  const readerFov = MathUtils.radToDeg(2 * Math.atan(Math.max(.315,.695/aspect) / readerDistance));
+  const reader = pose(readerEye,readerLook,readerFov);
   return {
     table: portrait ? pose(focus.clone().add(offset), focus, fittedPortrait, 2.48) : desktopTable(aspect),
+    education: reader, resume: reader, contact: reader,
     projects: portrait
       ? pose(v(-3.14, 1.82, -1.19), v(-1.79, 1.15, -1.20),
         MathUtils.radToDeg(2 * Math.atan(Math.max(.56, .335 / aspect))))
@@ -62,7 +71,12 @@ const rearAisle = [v(-2.47, 1.95, -.03), v(-1.25, 2.14, .38), v(.06, 2.15, .41),
 export function createCameraRide(trip, start, destination) {
   const returning = trip.to === 'table';
   let via;
-  if (trip.crossing) via = trip.from === 'projects' ? rearAisle : [...rearAisle].reverse();
+  if (trip.crossing && (isReaderStation(trip.from)||isReaderStation(trip.to))) {
+    const left = Math.min(start.eye.x,destination.eye.x), right = Math.max(start.eye.x,destination.eye.x);
+    via = rearAisle.filter(point => point.x > left + .15 && point.x < right - .15);
+    if(start.eye.x > destination.eye.x)via.reverse();
+  }
+  else if (trip.crossing) via = trip.from === 'projects' ? rearAisle : [...rearAisle].reverse();
   else if (returning) via = [...(shoulders[trip.from] || [])].reverse();
   else via = shoulders[trip.to] || [];
   const curve = new CatmullRomCurve3([start.eye, ...via, destination.eye], false, 'centripetal');

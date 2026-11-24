@@ -1,4 +1,4 @@
-"""Build the editable Midnight Signal Workshop, then batch its static meshes for glTF.
+"""Build the editable Night Shift Observatory, then batch its static meshes for glTF.
 
 Run paint_workshop.py using Python/Pillow first, then run this script in Blender:
 blender -b -P scripts/build_workshop.py
@@ -70,12 +70,15 @@ for spec in [
     ('screenOff','403726',.48,.10),('sky','ffffff',.92,0,.43,'dusk.jpg'),
     ('field','ffffff',.44,.07,.075,'field.jpg'),('floorA','846448',.62),
     ('floorB','967456',.62),('floorC','8d6c50',.63),('floorD','806148',.64),
-    ('contact','514234',.86),('boardShadow','254443',.83),('amberDeep','d8792d',.32,.11,.45),
+    ('rubyLens','e17563',.3,.08,.57),('aquaLens','77ddce',.30,.10,.42),('brightNavy','1b3b56',.34,.24),
+    ('captiveChrome','f2f5fb',.095,.95),('contact','514234',.86),('boardShadow','254443',.83),('amberDeep','d8792d',.32,.11,.45),
     ('bellBrass','b18e61',.41,.79),('well','0b1416',.89),('railsDark','3b4747',.33,.58),
     ('tunnelInside','372929',.71),('aperture','473634',.56,.26),
 ]:material(*spec)
-for name in ('projects','experience','resume','pull','play','explore','maker','archive','score'):
+for name in ('projects','experience','education','contact','record','resume','pull','play','explore','maker','archive','score','dial'):
     material('print_'+name,'ffffff',.62,.05,.11,name+'.png')
+for name in ('projectDesk','workArchive'):
+    material('print_'+name,'ffffff',.42,.06,.64,name+'.png')
 material('rollover_west','e2be6c',.34,.12,.18)
 material('rollover_east','8cb59d',.34,.12,.18)
 
@@ -212,55 +215,42 @@ def tabletop(name,x,z,w,d,y=.90):
     for dx in [-w/2+.095,w/2-.095]:
         for dz in [-d/2+.095,d/2-.095]:box('Mortised oak leg',(x+dx,(y-.13)/2,z+dz),(.086,y-.13,.085),'oak',.012)
 
-def furniture_lamp(x,y,z,scale=1,green=True,clamp=False):
-    def pt(a,b,c):return (x+a*scale,y+b*scale,z+c*scale)
-    def rr(r):return r*scale
-    if clamp:
-        box('Brass clamp',pt(0,.013,0),(rr(.073),rr(.06),rr(.085)),'brass',rr(.009))
-    else:
-        lathe('Turned lamp foot',pt(0,0,0),[(0,rr(.112)),(rr(.016),rr(.12)),(rr(.037),rr(.095)),(rr(.046),rr(.051))],'brass',32)
-    curve=bezier(pt(0,.035,0),pt(-.06,.42,-.03),pt(.06,.60,-.05),pt(.19,.47,-.02))
-    tube('Arched brass lamp neck',curve,rr(.014),'brass',12)
-    lc=pt(.192,.394,-.017)
-    lathe('Spun lamp shade',lc,[(rr(-.028),rr(.148)),(rr(-.016),rr(.148)),(rr(.033),rr(.117)),(rr(.070),rr(.069)),(rr(.077),rr(.035)),(rr(.095),rr(.026))],'greenShade' if green else 'paper',36)
-    cyl('Rolled shade rim',pt(.192,.365,-.017),rr(.15),rr(.009),'brassEdge',36)
-    cyl('Luminous lamp underside',pt(.192,.359,-.017),rr(.14),rr(.006),'bulb',36)
+def deck_plaque(word, x, z, width, height, lift=.005):
+    """A filed brass plate inset into the enamel, read along the shooting direction."""
+    y=deck(z)+lift
+    box('Brass destination inlay',(x,y,z),(width+.010,.005,height+.010),'bronze',.002,pitch=.065)
+    plane('Printed '+word,(x,y+.0037,z),(width,0,0),(0,height*.065,-height),'print_'+word)
+
 
 def gate(id):
-    data=LAYOUT['gates'][id];x,z=data['center'];dx,dz=data['direction'];y=deck(z)
-    center=P((x,y,z));right=P((-dz,0,dx)).normalized();front=P((-dx,0,-dz)).normalized()
-    def pos(lift,side,f):return center+P((0,lift,0))+right*side+front*f
-    outer=.143 if id=='projects' else .139;inner=.081;foot=.015
-    parent=mark('Pick_'+id.capitalize())
-    with group(parent):
-        pts=[];faces=[];div=28
-        for i in range(div+1):
-            a=math.pi*i/div;ca,sa=math.cos(a),math.sin(a)
-            for r,f in [(inner,.021),(outer,.021),(outer,-.026),(inner,-.026)]:
-                pts.append(pos(foot+sa*r,ca*r,f))
-        for i in range(div):
-            a=i*4
-            for n in range(4):faces.append((a+n,a+(n+1)%4,a+4+(n+1)%4,a+4+n))
-        faces.extend([(0,1,2,3),(div*4+3,div*4+2,div*4+1,div*4)])
-        raw('Cast enamel entrance',pts,faces,'teal' if id=='projects' else 'oxblood')
-        for r in (inner+.001,outer-.001):
-            tube('Polished entrance bead',[pos(foot+math.sin(i*math.pi/div)*r,math.cos(i*math.pi/div)*r,.023) for i in range(div+1)],.0033,'brassEdge')
+    data=LAYOUT['gates'][id];x,z=data['center'];dx,dz=data['direction']
+    center=P((x,deck(z),z));right=P((-dz,0,dx)).normalized();front=P((-dx,0,-dz)).normalized()
+    def pos(h,side,f):
+        p=center+right*side+front*f;p.y=deck(p.z)+h;return p
+    with group(mark('Pick_'+id.capitalize())):
+        # Twin cast shoes and lit guide tips frame an entirely open shot throat.
+        # The Projects rail rises out of teal cheeks; Experience disappears under
+        # a louvred oxblood delivery hood. The floor has room for the ball.
         for side in [-1,1]:
-            bar=box('Gate plinth',pos(.011,side*(outer+inner)/2,0),(.075,.023,.070),'bronze',.005)
-            bar.rotation_euler.z=math.atan2(dx,-dz)
-            # Sculpted keystones extend the tunnel cheeks down to the deck.
-            cheek=box('Cast portal foot',pos(.043,side*.112,-.010),(.051,.067,.10),'deepTeal' if id=='projects' else 'aperture',.008)
-            cheek.rotation_euler.z=math.atan2(dx,-dz)
-            for yy in [.041,.072]:
-                a=pos(yy,side*.120,.029);rod('Portal rivet',a,a+front*.007,.0054,'brassEdge',12)
-        # Bend the enamel lettering along the radius of the casting.
-        pts=[];uv=[]
-        for i in range(29):
-            u=i/28;a=math.radians(150-120*u)
-            for rad,vv in [(inner+.008,0),(outer-.008,1)]:
-                pts.append(pos(foot+math.sin(a)*rad,math.cos(a)*rad,.0238));uv.append((u,vv))
-        raw('Curved lettered enamel plate',pts,[(i*2,i*2+2,i*2+3,i*2+1) for i in range(28)],'print_'+id,uv=uv)
-    return parent
+            sections=[(.043,.100,.014),(.010,.096,.035),(-.067,.087,.062),(-.12,.077,.061)] if id=='projects' else [(.054,.092,.012),(.012,.087,.028),(-.058,.082,.04),(-.10,.073,.036)]
+            verts=[];faces=[]
+            for j,(f,spread,height) in enumerate(sections):
+                a,b=(spread-.015)*side,(spread+.016)*side
+                verts.extend([pos(.004,a,f),pos(.004,b,f),pos(height,b,f),pos(height,a,f)])
+                if j:
+                    for k in range(4):
+                        i=(j-1)*4+k;nx=(j-1)*4+(k+1)%4
+                        faces.append((i,nx,nx+4,i+4))
+            faces.extend([(3,2,1,0),(12,13,14,15)])
+            raw('Cast tapered guide',verts,faces,'teal' if id=='projects' else 'oxblood')
+            tube('Guide cap pinstripe',[pos(h+.0015,side*r,f) for f,r,h in sections],.0024,'brassEdge',7)
+            for j in [0,1,2]:
+                f,r,h=sections[j]
+                lens=pos(h+.002,side*r,f)
+                cyl('Fresnel pilot socket',lens,.009,.004,'bronze',18)
+                cyl('Fresnel pilot glass',lens+P((0,.003,0)),.0064,.004,'amber' if id=='projects' else 'rubyLens',16)
+        plate=((-0.278,.064,.223,.052) if id=='projects' else (.19,-.483,.244,.047))
+        deck_plaque(id,*plate)
 
 def entry_footwork(id):
     """A continuous load-bearing entrance from the deck through each branch mouth."""
@@ -284,20 +274,19 @@ def entry_footwork(id):
     raw('Steel transition tongue',verts,faces,'railsDark' if id=='projects' else 'tunnelInside')
     for pts in edges:tube('Turned-up tongue edge',pts,.0039,'bronze' if id=='projects' else 'oxblood',8)
     if id=='experience':
-        # Round, double-wall upper shell curves with the outgoing path under the launch wireform.
-        centerline=smooth_path(route[:4],8)[:18];verts=[];faces=[];div=18
+        # A formed low rectangular hood covers only the last bend in the underpass.
+        # Its mouth, brass seam and roof clearance can be seen from the flippers.
+        centerline=smooth_path(route[:4],8)[3:18];verts=[];faces=[]
         for k,c in enumerate(centerline):
             tangent=centerline[min(k+1,len(centerline)-1)]-centerline[max(0,k-1)]
             side=P((-tangent.z,0,tangent.x)).normalized()
-            for j in range(div+1):
-                a=math.pi*j/div
-                verts.append(c+side*(.091*math.cos(a))+P((0,.004+.094*math.sin(a),0)))
+            section=[(-.071,-.017),(-.071,.034),(-.055,.049),(.053,.049),(.071,.034),(.071,-.017)]
+            verts.extend(c+side*s+P((0,h,0)) for s,h in section)
             if k:
-                for j in range(div):
-                    a=(k-1)*(div+1)+j;faces.append((a,a+1,a+div+2,a+div+1))
-            if k in [7,16]:
-                tube('Riveted tunnel band',verts[-(div+1):],.0036,'bronze',8)
-        raw('Curved tunnel hood',verts,faces,'oxblood',True)
+                for j in range(5):
+                    i=(k-1)*6+j;faces.append((i,i+1,i+7,i+6))
+            if k in [0,6,14]:tube('Formed brass casing seam',verts[-6:],.0027,'bronze',7)
+        raw('Louvred delivery hood',verts,faces,'oxblood')
     else:
         # Timber webs make the rising portion read as a real ramp from the flipper end.
         for side_index in [0,1]:
@@ -325,7 +314,7 @@ def tracks(points,id):
         if abs(p.x)<.53:
             low=deck(p.z)+.013
             if p.y-.031>low:rod('Riser post',(p.x,low,p.z),(p.x,p.y-.030,p.z),.0072,'brass')
-    if id!='launcher':
+    if id in ('projects','experience','crossing'):
         for i in ([int(len(nodes)*.61),int(len(nodes)*.81)] if id=='projects' else [int(len(nodes)*.71)]):
             p=nodes[i]
             barrier=.87 if abs(p.x)>1.23 else .16
@@ -407,6 +396,99 @@ def lane_rollovers():
             raw('Rollover arrow',pts,[(0,1,5,6),(1,2,3,4),(1,4,5)],lens['material'])
 
 
+def captive_ball():
+    """Open-front spring dynamometer. All dimensions are shared with the collision model."""
+    data=MECHANISMS['captive'];x,z=data['x'],data['z'];r=data['radius']
+    rear=data['rearAnchorZ'];up=P((0,1,0));rod_axis=P((0,-.065,1)).normalized()
+    def center(zz):
+        return P((x,deck(zz)+r,zz))
+    p=center(z);bearing=center(rear)
+    bed_z=(rear+z)/2
+    box('Captive track brass flange',(x,deck(bed_z)+.002,bed_z),(.078,.003,z-rear+.049),'bronze',.0012,pitch=.065)
+    box('Captive track red enamel',(x,deck(bed_z)+.0035,bed_z),(.064,.002,z-rear+.038),'oxblood',.0008,pitch=.065)
+    for xx,post_z in data['posts']:
+        for zz in [rear+.004,post_z,z-.007]:
+            pos=P((xx,deck(zz),zz))
+            cyl('Keeper ferrule',pos+up*.0038,.0082,.006,'bronze',16)
+            cyl('Keeper post',pos+up*.016,data['postRadius'],.029,'brass',14)
+        rods=[(xx,deck(zz)+.031,zz) for zz in [rear+.003,post_z,z-.008]]
+        tube('Nickel captive guide',rods,.0032,'steel',10)
+    # Turned collet/chassis is the fixed end of the spring and allows compression.
+    box('Dynamometer yoke',bearing,(.080,.032,.017),'bronze',.005,pitch=.065)
+    rod('Chrome socket in yoke',bearing-rod_axis*.009,bearing+rod_axis*.004,.014,'gunmetal',20)
+    with group(mark(data['springNode'],bearing)):
+        points=[];clearance=z-r-rear
+        for i in range(113):
+            t=i/112;angle=t*math.tau*8
+            points.append(bearing+rod_axis*(clearance*t)+P((math.cos(angle)*.0105,math.sin(angle)*.0105,0)))
+        tube('Pocket compression coil',points,.0019,'brassEdge',7)
+        rod('Floating strike shoe',bearing+rod_axis*(clearance-.003),bearing+rod_axis*clearance,.0132,'steel',20)
+    # Keep a true mesh at the ball centre so the moving origin and hit sphere coincide.
+    profile=[(-r*math.cos(i*math.pi/20),max(.00001,r*math.sin(i*math.pi/20))) for i in range(21)]
+    lathe(data['node'],p,profile,'captiveChrome',32)
+
+
+def destination_instruments():
+    """Route selectors in enamel and brass. New hardware stays in the protected sling island."""
+    up=P((0,1,0))
+    with group(mark('Pick_Education')):
+        deck_plaque('education',-.235,.204,.201,.049)
+        for i in range(3):
+            x,z=-.462+i*.037,.231-i*.039
+            cyl('Bank indicator bezel',(x,deck(z)+.003,z),.009,.005,'bronze',16)
+            cyl('Bank porcelain jewel',(x,deck(z)+.006,z),.0064,.005,['amber','aquaLens','rubyLens'][i],16)
+    # The index dial is let into the field. Its face tracks the exposed blade count.
+    x,z=-.265,-.410;y=deck(z)
+    box('Recessed counting dial',(x,y+.0015,z),(.160,.003,.160),'bronze',.001,pitch=.065)
+    plane('Enamel counting scale',(x,y+.0036,z),(.154,0,0),(0,.154*.065,-.154),'print_dial')
+    with group(mark('Bank_Dial',(x,y+.006,z))):
+        raw('Vermilion index needle',[(x-.011,y+.011,z+.017),(x+.011,y+.011,z+.017),
+            (x+.004,y+.011,z-.027),(x,y+.012,z-.054),(x-.004,y+.011,z-.027)],[(0,1,2,3,4)],'amber')
+        cyl('Counter spindle',(x,y+.012,z),.009,.008,'brassEdge',18)
+    with group(mark('Pick_Contact')):
+        deck_plaque('contact',.106,.443,.162,.051)
+        # A maroon key arm and paired winding bobbins make a telegraph on the sling cap.
+        x,z=.238,.431;y=deck(z)+.052
+        box('Telegraph mounting shoe',(x,y-.002,z),(.050,.005,.083),'bronze',.003,pitch=.065)
+        for zz in [z-.020,z+.013]:
+            cyl('Receiver coil drum',(x-.009,y+.012,zz),.012,.026,'oxblood',22)
+            cyl('Receiver coil pole',(x-.009,y+.028,zz),.008,.007,'steel',20)
+            for j in range(3):cyl('Copper winding',(x-.009,y+.004+j*.006,zz),.0126,.0020,'brassEdge',22)
+        rod('Telegraph lever',(x+.007,y+.012,z-.029),(x+.003,y+.046,z+.031),.0037,'brass',10)
+        cyl('Telegraph thumb key',(x+.003,y+.049,z+.031),.010,.006,'redRubber',16)
+    with group(mark('Pick_Record')):
+        deck_plaque('record',-.179,.443,.162,.051)
+    # The common rear collector is a separate route from both desk destinations.
+    reader=LAYOUT['reader'];cx,cz=reader['gate']['center']
+    for key in ('route','turnout','eastTurnout'):
+        if key in reader:tracks(reader[key],'reader')
+    with group(mark('Pick_Collector')):
+        lip_z=cz+.052
+        verts=[];faces=[]
+        nodes=smooth_path([P((cx,deck(lip_z)+.023,lip_z))]+[P(p) for p in reader['route'][:4]],7)
+        for i,p in enumerate(nodes):
+            tangent=nodes[min(i+1,len(nodes)-1)]-nodes[max(i-1,0)]
+            side=P((-tangent.z,0,tangent.x)).normalized()
+            half=.0355+.027*max(0,1-i/9)
+            floor=p-up*.023
+            verts.extend([floor-side*half,floor+side*half,floor+side*half-up*.007,floor-side*half-up*.007])
+            if i:
+                a=(i-1)*4
+                faces.extend([(a,a+4,a+5,a+1),(a+1,a+5,a+6,a+2),(a+2,a+6,a+7,a+3),(a+3,a+7,a+4,a)])
+        raw('Selector lift tongue',verts,faces,'brightNavy')
+        for sign in [-1,1]:
+            top=[verts[i*4+(1 if sign>0 else 0)]+up*.006 for i in range(len(nodes))]
+            tube('Nickel collector guide',top,.0042,'steel',8)
+            for j in [0,4]:
+                p=top[j]+P((sign*.007,.003,0))
+                cyl('Collector lock lamp',p,.006,.006,'aquaLens',14)
+    # Directional pearls brighten a station selection without narrowing its approach.
+    for id,points in [('record',[(-.169,.438),(-.153,.411)]),('contact',[(.128,.436),(.094,.408)])]:
+        for x,z in points:
+            cyl('Quadrant light bezel',(x,deck(z)+.0018,z),.0084,.003,'bronze',14)
+            cyl('Paperweight lens',(x,deck(z)+.0037,z),.0056,.003,'aquaLens' if id=='contact' else 'amber',14)
+
+
 def cabinet():
     collection('01 • Signal cabinet')
     # The bevelled rim has a physical break at each outgoing rail.
@@ -420,7 +502,6 @@ def cabinet():
     plane('Cabinet_Playfield',(0,.94,0),(1.04,0,0),(0,.117,-1.8),'field')
     box('Palm rest',(0,deck(.855)+.008,.870),(1.095,.064,.166),'woodGrain',.021,pitch=.065)
     plane('Maker signature',(.07,deck(.88)+.045,.878),(.22,0,0),(0,.002,-.047),'print_maker')
-    box('Porcelain repair key',(-.543,deck(.19)+.073,.19),(.073,.004,.035),'ivory',.001,yaw=.3,pitch=.065)
     for x in [-.546,.546]:
         for z in [-.865,-.32,.32,.81]:screw(x,deck(z)+.077,z,.008)
     for x in [-.462,.462]:
@@ -431,6 +512,7 @@ def cabinet():
     for id in ['projects','experience']:gate(id)
     collection('02 • Mechanical playfield')
     telegraph_bank();signal_spinner();lane_rollovers()
+    captive_ball()
     for rail in LAYOUT['rails']:
         coords=rail['points'];pts=[(x,deck(z)+.027,z) for x,z in coords];r=rail['radius']
         sling='sling' in rail['id'];ret='return' in rail['id']
@@ -447,27 +529,19 @@ def cabinet():
             stroke=[p.lerp(centroid,.18)+P((0,.002,0)) for p in top]
             tube('Brass sling piping',stroke+stroke[:1],.0019,'brassEdge',7)
             for p in top:screw(p.x,p.y+.006,p.z,.0058)
-    for b in LAYOUT['bumpers']:
+    for i,b in enumerate(LAYOUT['bumpers']):
         x,z,r=b['x'],b['z'],b['radius'];y=deck(z)
         cyl('Bell mounting shadow',(x,y+.001,z),r*1.30,.0014,'boardShadow')
         lathe('Bell solenoid foot',(x,y,z),[(.001,r*1.13),(.010,r*1.18),(.014,r*1.02),(.021,r*.78),(.043,r*.71)],'brass',28)
         cyl('Oxblood bumper rubber',(x,y+.027,z),r,.018,'redRubber',28)
-        lathe('Bumper_'+b['id'],(x,y,z),[(.034,r*.98),(.041,r*1.06),(.049,r*1.07),(.068,r*.91),(.081,r*.53),(.084,r*.22)],'bellBrass',36)
-        cyl('Bell finial',(x,y+.088,z),r*.20,.009,'brassEdge')
-        for j in range(9):
-            a=j*math.tau/9
-            rod('Bell vent',(x+math.cos(a)*r*.48,y+.083,z+math.sin(a)*r*.48),(x+math.cos(a)*r*.79,y+.0753,z+math.sin(a)*r*.79),.0026,'well',8)
+        lathe('Bumper_'+b['id'],(x,y,z),[(.034,r*.98),(.041,r*1.06),(.048,r*1.08),(.062,r*.95),(.075,r*.65),(.082,r*.40),(.083,r*.27)],['teal','oxblood','brightNavy'][i],40)
+        lathe('Brass instrument bezel',(x,y,z),[(.070,r*.71),(.073,r*.73),(.074,r*.69)],'bellBrass',36)
+        cyl('Jewel well',(x,y+.082,z),r*.335,.006,'bronze',32)
+        lathe('Bullseye pressed glass',(x,y,z),[(.082,r*.290),(.088,r*.27),(.094,r*.17),(.096,r*.045)],['amber','aquaLens','rubyLens'][i],32)
+        for j in range(6):
+            a=j*math.tau/6
+            rod('Cap guilloche',(x+math.cos(a)*r*.56,y+.078,z+math.sin(a)*r*.56),(x+math.cos(a)*r*.89,y+.066,z+math.sin(a)*r*.89),.0016,'brassEdge',8)
         cyl('Bright bell hem',(x,y+.044,z),r*1.083,.0036,'brassEdge',36)
-    # A faceted amber wayside signal sits in the protected horseshoe.
-    p=LAYOUT['anchors']['hobbies'];x,z=p[0],p[2];y=deck(z)
-    lantern=mark('Pick_Hobbies')
-    with group(lantern):
-        lathe('Signal pedestal',(x,y,z),[(.002,.043),(.012,.046),(.017,.032),(.045,.025),(.050,.036)],'bronze')
-        lathe('Amber signal lens',(x,y,z),[(.05,.031),(.060,.034),(.101,.027),(.108,.023)],'amberDeep',8,False)
-        lathe('Lantern hood',(x,y,z),[(.106,.025),(.110,.039),(.118,.030),(.137,.011),(.140,.007)],'bronze',8,False)
-        for i in range(4):
-            a=(i+.5)*math.pi/2
-            rod('Lantern cage',(x+.032*math.cos(a),y+.052,z+.032*math.sin(a)),(x+.025*math.cos(a),y+.109,z+.025*math.sin(a)),.0025,'gunmetal',7)
     for id,points in LAYOUT['routes'].items():
         tracks(points,id);entry_footwork(id)
     if 'crossing' in LAYOUT:
@@ -477,12 +551,6 @@ def cabinet():
     for x in [.425,.504]:box('Shooter lane',(x,deck(.64)+.016,.64),(.012,.029,.47),'bronze',.005,pitch=.065)
     for x in [.432,.496]:rod('Spring cradle',(x,deck(.85)+.01,.85),(x,deck(.59)+.01,.59),.004,'steel')
     plane('Pull instruction',(.463,deck(.865)+.047,.866),(.097,0,0),(0,.004,-.052),'print_pull')
-    # The short truss and rivets cross above the unoccupied rear lane.
-    for z in [-.712,-.765]:
-        arch=bezier((-.22,deck(z)+.018,z),(-.15,1.164,z),(.015,1.160,z),(.104,deck(z)+.018,z))
-        tube('Riveted crossover arch',arch,.009,'brass')
-        rod('Truss chord',(-.214,deck(z)+.022,z),(.098,deck(z)+.022,z),.007,'bronze')
-        for i in [3,6,9,12]:rod('Truss web',arch[i],(arch[i].x+.019,deck(z)+.022,z),.0039,'steel',8)
     # A dark catch well beneath the drain opening. The milled rim sits flush with the apron.
     x,z=-.025,.755;y=deck(z)
     lathe('Drain mouth',(x,y,z),[(.001,.066),(.006,.069),(.011,.066),(.012,.059),(.008,.055),(.002,.053)],'bronze',48)
@@ -497,12 +565,11 @@ def cabinet():
             y=deck(z)+(.046 if name=='Pick_Resume' else .069)
             box('Engraved apron plate',(x,y,z),(w+.007,.012,h+.007),'paper' if word=='resume' else 'bronze',.004,pitch=.065)
             plane('Apron lettering',(x,y+.008,z),(w,0,0),(0,h*.065,-h),'print_'+word)
-    # Low cut-rim lamp remains visible in the return shot from across the room.
-    furniture_lamp(-.555,deck(-.615)+.087,-.61,.53,True,True)
+    destination_instruments()
     with group(mark('Pick_Score')):
-        box('Score case',(0,1.165,-.888),(.29,.108,.055),'walnut',.012)
-        plaque('Mechanical score window',(0,1.165,-.857),.263,.069,'print_score')
-        for x in [-.105,.105]:rod('Score bracket',(x,1.03,-.888),(x,1.12,-.888),.009,'brass')
+        box('Score case',(0,1.095,-.888),(.29,.108,.055),'walnut',.012)
+        plaque('Mechanical score window',(0,1.095,-.857),.263,.069,'print_score')
+        for x in [-.105,.105]:rod('Score bracket',(x,1.03,-.888),(x,1.07,-.888),.009,'brass')
 
 def spring_axes(station):
     path=LAYOUT['routes'][station]
@@ -606,9 +673,25 @@ def book(x,y,z,w=.183,l=.238,color='oxblood',heading=.05):
     box('Linen-bound book',(x,y+.016,z),(w,.032,l),'paper',.003,yaw=heading)
     for dy in [.001,.036]:box('Book cover',(x,y+dy,z),(w+.008,.006,l+.01),color,.002,yaw=heading)
 
+
+def bench_sign(root, ticket, x, z, width):
+    # The forward lip of the worktop must clear the entire enamel face from player height.
+    center=P((x,.798,z+.038));side=P((1,0,0));up=P((0,.925,-.38));front=side.cross(up).normalized()
+    with group(mark(root)):
+        box('Solid wood nameplate rail',center-front*.023,(width+.048,.117,.042),'walnut',.007,pitch=-math.atan2(.38,.925))
+        for sign in [-1,1]:
+            foot=center+side*(width*.36*sign)-front*.040
+            rod('Nameplate mounting stud',foot-P((0,0,.105)),foot,.009,'bronze',12)
+        plane('Polished brass frame',center,side*(width+.022),up*.103,'brassEdge')
+        plane('Lighted workbench enamel',center+front*.0018,side*width,up*.088,'print_'+ticket)
+        for sign in [-1,1]:
+            p=center+side*(width*.5+.005)*sign
+            rod('Nameplate pin',p,p+front*.003,.0038,'bronze',12)
+
 def projects():
     collection('03 • Projects study')
     tabletop('Writing desk',-1.80,-1.08,1.54,1.18)
+    bench_sign('Pick_Desk_Sign','projectDesk',-1.70,-.451,.60)
     for j in range(3):
         box('Drawer',(-2.29,.76-j*.134,-.528),(.37,.118,.08),'woodGrain',.013)
         rod('Drawer bail',(-2.345,.77-j*.134,-.475),(-2.235,.77-j*.134,-.475),.009,'bronze')
@@ -629,7 +712,6 @@ def projects():
     switch=mark('Anchor_Switch',(-2.05,.962,-.96),(.17,.073,1),math.radians(-44))
     switch.rotation_euler.z=math.radians(-90)
     box('Reversing switch mount',(-2.05,.923,-.96),(.199,.059,.112),'walnut',.009,yaw=math.radians(-90))
-    furniture_lamp(-2.30,.90,-.785,.79)
     # Two open pages, visible stitch and real pencil are the marks of an inhabited workbench.
     for side in [-1,1]:
         box('Open notebook page',(-1.88+side*.077,.912,-.667),(.154,.014,.208),'paper',.003,roll=side*.043)
@@ -644,6 +726,7 @@ def projects():
 def archive():
     collection('04 • Letterpress archive')
     tabletop('Archive workbench',1.80,-.978,1.53,1.08)
+    bench_sign('Pick_Archive_Sign','workArchive',1.81,-.403,.66)
     # Index facade wraps the HTML-backed Three texture region with an oak frame.
     box('Type case backing',(1.8,1.41,-1.12),(1.36,.81,.15),'walnut',.021)
     box('Card drawer recess',(1.8,1.32,-1.038),(1.10,.432,.026),'woodDark',.012)
@@ -661,7 +744,6 @@ def archive():
     mark('Anchor_Archive',(1.80,1.32,-1.020),(1.02,.385,1))
     mark('Archive_Carriage',(1.80,1.14,-1.012))
     cup_assembly('Experience_Cup',LAYOUT['anchors']['experience'],True)
-    furniture_lamp(2.19,.90,-1.05,1.67,False)
     for i in range(2):
         x,z=1.93+i*.23,-.713-i*.08
         rod('Ink brayer',(x-.064,.960,z),(x+.064,.960,z),.033,'oxblood',22)
@@ -800,12 +882,11 @@ def proof_camera_and_lights():
     light('Amber overhead',(0,2.51,.45),(0,.94,0),105,1.45,(1,.79,.55))
     light('Window blue fill',(-.62,1.80,-2.15),(0,.90,0),79,1.42,(.53,.72,1))
     light('Camera-side warm bounce',(-1.35,1.62,1.53),(0,.95,0),53,1.1,(1,.84,.68))
-    light('Green lamp',(-.457,1.26,-.619),(-.13,.94,-.26),12,.14,(1,.73,.39))
     light('Project reading lamp',(-2.148,1.19,-.80),(-1.98,.92,-.75),18,.20,(1,.72,.39))
     light('Letterpress task lamp',(2.51,1.46,-1.08),(1.82,1.15,-.90),36,.33,(1,.79,.51))
     data=bpy.data.cameras.new('Over the flippers');data.lens=32;data.sensor_width=36
-    camera=attach(bpy.data.objects.new('Player-eye camera',data),(-.27,2.16,1.46))
-    camera.rotation_euler=(V((.01,.94,.10))-camera.location).to_track_quat('-Z','Y').to_euler()
+    camera=attach(bpy.data.objects.new('Player-eye camera',data),(0,2.63,2.05))
+    camera.rotation_euler=(V((0,.84,.03))-camera.location).to_track_quat('-Z','Y').to_euler()
     scene.camera=camera;scene.render.engine='CYCLES';scene.cycles.samples=18
     scene.view_settings.exposure=-1.0
     scene.render.resolution_x=1440;scene.render.resolution_y=900;scene.render.resolution_percentage=100
@@ -813,7 +894,7 @@ def proof_camera_and_lights():
         if area.type=='VIEW_3D':
             region=area.spaces.active.region_3d
             region.view_perspective='CAMERA'
-    scene['author']='Daniel Ryu • Midnight Signal Workshop'
+    scene['author']='Daniel Ryu • Night Shift Observatory'
     scene['dimensions']='Metres. Rail positions, ball size and pivots are shared with src/room-layout.json.'
 
 def export_asset():
@@ -827,7 +908,7 @@ def export_asset():
     bpy.context.view_layer.update()
     fixed={}
     for obj in list(scene.objects):
-        if obj.type!='MESH' or obj.name=='Cabinet_Playfield' or obj.name.startswith('Bumper_bell-'):continue
+        if obj.type!='MESH' or obj.name in ('Cabinet_Playfield','Captive_Ball') or obj.name.startswith('Bumper_bell-'):continue
         material=obj.material_slots[0].material
         fixed.setdefault((obj.parent,material),[]).append(obj)
     for (parent,mat),objects in fixed.items():

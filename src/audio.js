@@ -112,6 +112,10 @@ export function createAudio() {
           rattle(t + i * .023 + i * i * .002, 2450, .018, (.16 - i * .027) * force);
         }
         break;
+      case 'captive':
+        tone(t, 1490, 940, .105, .19, 'triangle');
+        rattle(t + .018, 2020, .11, .20);
+        break;
       case 'rollover':
         tone(t, 660, 650, .13, .11 * force);
         tone(t + .008, 1320, 1296, .066, .048 * force);

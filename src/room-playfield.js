@@ -85,9 +85,28 @@ export async function createPlayfield(onImpact) {
   }
   const ball = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic()
     .setCcdEnabled(true).setCanSleep(false).setLinearDamping(0.045).setAngularDamping(0.22));
-  const ballCollider = make(collider.ball(layout.ballRadius).setDensity(7800).setFriction(0.23)
+  const ballCollider = make(collider.ball(layout.ballRadius).setDensity(7800).setFriction(0.23).setCollisionGroups(0x0004ffff)
     .setRestitution(0.24).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS), null, ball);
   ball.setEnabled(false);
+  // The second steel ball slides on a one-axis joint. Its return spring,
+  // rail travel and collision impulse are all solved on the same timestep.
+  const captive = mechanisms.captive;
+  const captiveY = surfaceY(captive.z) + captive.radius;
+  const shoe = world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(captive.x, captiveY, captive.z));
+  const captiveBall = world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(captive.x, captiveY, captive.z).setCcdEnabled(true).setCanSleep(false));
+  make(collider.ball(captive.radius).setDensity(7800).setRestitution(.60).setFriction(0).setCollisionGroups(0x00020004),
+    {type:'captive',id:'captive-ball'}, captiveBall);
+  const slideAxis = {x:0,y:Math.sin(deckPitch),z:-Math.cos(deckPitch)};
+  const slide = world.createImpulseJoint(RAPIER.JointData.prismatic(still,still,slideAxis),shoe,captiveBall,true);
+  slide.setLimits(0,captive.stroke / Math.cos(deckPitch));
+  slide.configureMotorPosition(0,100,7);
+  for(const [x,z] of captive.posts){
+    make(collider.cylinder(.024,captive.postRadius).setTranslation(x,surfaceY(z)+.024,z)
+      .setRestitution(.55),{type:'rail',id:'captive-guard-'+x});
+  }
+  function captiveTravel(){
+    return Math.max(0,Math.min(captive.stroke,captive.z-captiveBall.translation().z));
+  }
   function setBall(position, velocity = still, spin = still) {
     ball.setEnabled(true);
     ball.setTranslation(position, true);
@@ -111,7 +130,7 @@ export async function createPlayfield(onImpact) {
     const scale = Math.hypot(dx, dz);
     if (scale) ball.setLinvel({ x: v.x + dx * 0.82 / scale, y: v.y, z: v.z + dz * 0.82 / scale }, true);
   }
-  return { setBall, snapshot, step, kick, setDropRaised: (id, raised) => drops.get(id)?.setEnabled(raised),
+  return { setBall, snapshot, step, kick, captiveTravel, setDropRaised: (id, raised) => drops.get(id)?.setEnabled(raised),
     position: () => copy(ball.translation()), park: () => ball.setEnabled(false),
     dispose() { events.free(); world.free(); } };
 }

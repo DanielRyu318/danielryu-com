@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ROOM_LAYOUT as layout, returnSpring, surfaceY } from '../src/room-layout.js';
+import { ROOM_GATES, ROOM_LAYOUT as layout, STATION_IDS, returnSpring, stationTrack, surfaceY } from '../src/room-layout.js';
 import hardware from '../src/room-mechanisms.json' with { type: 'json' };
 import { createPlayfield, ROOM_STEP } from '../src/room-playfield.js';
 import { createRoomPhysics, crossedRoomGate } from '../src/room-physics.js';
@@ -82,8 +82,8 @@ test('Rapier kinematic flippers impart upward velocity to an incoming sphere on 
   }
 });
 
-test('the two mouths distinguish front, back, outside and elevated trajectories', () => {
-  for (const [id, g] of Object.entries(layout.gates)) {
+test('the station mouths distinguish front, back, outside and elevated trajectories', () => {
+  for (const [id, g] of Object.entries(ROOM_GATES)) {
     const [dx, dz] = g.direction, [x, z] = g.center;
     const point = (t, offset, height) => ({ x:x + t * dx + dz * offset,
       y:surfaceY(z + t * dz - dx * offset) + layout.ballRadius + height, z:z + t * dz - dx * offset });
@@ -313,7 +313,7 @@ test('a ball through the spinner sets the rotor in motion and awards its own poi
     }
     if (event.name === 'spinner') spinnerAward = increment;
   });
-  game.setPull(.87);
+  game.setPull(.94);
   game.release();
   for (let frame = 0; frame < 1500 && !spinnerAward; frame++) {
     const { x, z } = game.state.ball;
@@ -326,4 +326,108 @@ test('a ball through the spinner sets the rotor in motion and awards its own poi
   const angle = game.state.mechanisms.spin;
   game.update(1 / 60);
   assert.ok(Math.abs(game.state.mechanisms.spin - angle) > .03);
+});
+
+test('every destination can transfer to every other station and return with spring power', async t => {
+  const game = await machine(t);
+  for (const from of STATION_IDS) {
+    for (const to of STATION_IDS) {
+      await game.goTo(from, { instant:true });
+      const previous = { ...game.state.ball };
+      const journey = game.goTo(to);
+      const sharedCup = stationTrack(from) === stationTrack(to);
+      if (sharedCup) {
+        assert.deepEqual(game.state.ball, previous);
+        assert.equal(game.state.travel, null);
+      } else {
+        assert.equal(game.state.travel.crossing, true);
+        assert.deepEqual(game.state.travel.start, previous);
+        finishRailTrip(game);
+      }
+      assert.equal(await journey, true);
+      assert.equal(game.state.station, to);
+      assert.deepEqual(game.state.ball, xyz(layout.anchors[to]));
+      game.setPull(.73);
+      assert.equal(game.release(), true);
+      assert.equal(game.state.travel.from, to);
+      finishRailTrip(game);
+      assert.equal(game.state.mode, 'playing');
+      assert.ok(Object.values(game.state.ball).every(Number.isFinite));
+    }
+  }
+});
+
+test('each card can be called from the flippers, and leaving the shared reader restores the suspended ball', async t => {
+  for (const page of layout.reader.pages) {
+    const game = await machine(t);
+    game.setPull(.68);
+    game.release();
+    frames(game, 17);
+    const held = { ...game.state.ball };
+    const visit = game.goTo(page);
+    assert.equal(game.state.gates.reader, true);
+    finishRailTrip(game);
+    assert.equal(await visit, true);
+    assert.equal(game.state.readerPage, page);
+    assert.deepEqual(game.state.ball, xyz(layout.reader.route.at(-1)));
+    game.setPull(.42);
+    assert.equal(game.cancelPull(), true);
+    await game.goTo('table', { instant:true });
+    assert.deepEqual(game.state.ball, held);
+    assert.equal(game.resume(), true);
+    frames(game, 2);
+    assert.notDeepEqual(game.state.ball, held);
+
+    await game.goTo(page, { instant:true });
+    game.setPull(.72);
+    game.release({ instant:true });
+    assert.equal(game.state.mode, 'playing');
+    assert.equal(game.state.travel, null);
+    assert.equal(game.state.station, 'table');
+  }
+});
+
+test('free-play hardware can arm and collect all three records, and the Education award survives rollover hits', async t => {
+  for (const [page, power] of [['education',8 / 126], ['resume',3 / 126], ['contact',41 / 126]]) {
+    let selected = false, collected = false;
+    const game = await machine(t, event => {
+      if (event.type === 'reader-select' && event.station === page) selected = true;
+      if (event.type === 'hit' && event.station === page) collected = true;
+    });
+    game.setExplore(page === 'education');
+    game.setPull(power);
+    game.release();
+    for (let frame = 0; frame < 2000 && !collected && game.state.mode === 'playing'; frame++) {
+      const { x, z } = game.state.ball;
+      for (const side of ['left','right']) game.flip(side, (side === 'left') === (x < 0) && z > .595 && z < .725);
+      game.update(1 / 60);
+    }
+    assert.ok(selected && collected, `${page} shot did not collect its lit card`);
+    if (page === 'education') {
+      assert.equal(game.state.travel.to, page);
+      assert.equal(game.state.travel.gateProgress, 0);
+      finishRailTrip(game);
+      assert.equal(game.state.station, page);
+    } else assert.equal(game.state.station, 'table');
+  }
+});
+
+test('a steel-to-steel hit scores and compresses the captive ball against its return spring', async t => {
+  let previous=0, increment=0, award=0, maximum=0;
+  const game=await machine(t,e=>{
+    if(e.type==='score'){increment=e.score-previous;previous=e.score;}
+    if(e.type==='sound'&&e.name==='captive')award=increment;
+  });
+  game.setPull(23/126);
+  game.release();
+  for(let i=0;i<2000&&game.state.mode==='playing';i++){
+    const {x,z}=game.state.ball;
+    for(const side of ['left','right'])game.flip(side,(side==='left')===(x<0)&&z>.595&&z<.725);
+    game.update(1/60);
+    maximum=Math.max(maximum,game.state.mechanisms.captive);
+    if(maximum>.018&&game.state.mechanisms.captive<.001)break;
+  }
+  assert.equal(award,150);
+  assert.ok(maximum>.018&&maximum<=hardware.captive.stroke);
+  assert.ok(game.state.mechanisms.captive<.001);
 });

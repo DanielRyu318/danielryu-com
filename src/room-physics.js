@@ -1,4 +1,4 @@
-import { ROOM_LAYOUT as layout, returnSpring, surfaceY } from './room-layout.js';
+import { ROOM_GATES, ROOM_LAYOUT as layout, STATION_IDS, isReaderStation, returnSpring, stationTrack, surfaceY } from './room-layout.js';
 import { railPath, tuple, xyz } from './room-path.js';
 import { createPlayfield, ROOM_STEP } from './room-playfield.js';
 import { roomRoute } from './room-routes.js';
@@ -7,10 +7,11 @@ import hardware from './room-mechanisms.json' with { type: 'json' };
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
 const launcher = layout.launcher;
 const cradle = xyz(launcher.path[0]);
+const destinations = new Set(['table', ...STATION_IDS]);
 
 // Only a forward crossing inside the mouth, with the entire ball between the posts, operates a gate.
 export function crossedRoomGate(before, after) {
-  for (const [id, g] of Object.entries(layout.gates)) {
+  for (const [id, g] of Object.entries(ROOM_GATES)) {
     const [cx, cz] = g.center, [dx, dz] = g.direction;
     const previous = (before.x - cx) * dx + (before.z - cz) * dz;
     const current = (after.x - cx) * dx + (after.z - cz) * dz;
@@ -31,14 +32,16 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
   const mechanisms = {
     drops: Object.fromEntries(hardware.dropBank.targets.map(t => [t.id, 0])),
     rollovers: Object.fromEntries(hardware.rollovers.map(t => [t.id, 0])),
-    spin: 0
+    spin: 0, captive: 0
   };
   const state = { mode: 'ready', station: 'table', ball: { ...cradle }, flippers, pull: 0, explore: false,
-    mechanisms, score: 0, ballScore: 0, stats, travel: null, secret: false, gates: { projects: false, experience: false } };
+    mechanisms, score: 0, ballScore: 0, stats, travel: null, readerPage: null, secret: false,
+    gates: Object.fromEntries(Object.keys(ROOM_GATES).map(id => [id, false])) };
   const lastImpact = new Map();
   const bells = new Set();
   const down = new Set();
   let spinVelocity = 0, rearmAt = Infinity;
+  let bankAwardLit = false;
   let elapsed = 0, accumulated = 0, guide = null, trip = null, suspended = null;
   let disposed = false;
   const field = await createPlayfield(impact);
@@ -54,6 +57,11 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     state.ballScore += points;
     stats.highScore = Math.max(stats.highScore, state.ballScore);
     emit('score', { score: state.score, stats: { ...stats } });
+  }
+  function selectReaderPage(page) {
+    if (!isReaderStation(page) || state.readerPage === page) return;
+    state.readerPage = page;
+    emit('reader-select', { station: page });
   }
   function impact(tag) {
     if (elapsed - (lastImpact.get(tag.id) ?? -Infinity) < 0.14) return;
@@ -80,7 +88,12 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
         score(500);
         rearmAt = elapsed + 1.2;
         sound('secret', .65);
+        bankAwardLit = true;
+        selectReaderPage(layout.reader.contacts.bank);
       }
+    } else if (tag.type === 'captive') {
+      score(150);
+      sound('captive');
     } else if (tag.type === 'spinner') {
       const speed = field.snapshot().velocity.z;
       spinVelocity = Math.sign(speed) * clamp(Math.abs(speed) * 24, 6, 34);
@@ -90,6 +103,7 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
       mechanisms.rollovers[tag.id] = 1;
       score(50);
       sound('rollover', .65);
+      if (!bankAwardLit) selectReaderPage(layout.reader.contacts[tag.id]);
     } else if (tag.type === 'rail') {
       const v = field.snapshot().velocity;
       const speed = Math.hypot(v.x, v.z);
@@ -194,7 +208,7 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     place(finished.path.at(1));
     state.station = to;
     state.travel = null;
-    state.gates.projects = state.gates.experience = false;
+    for (const id of Object.keys(state.gates)) state.gates[id] = false;
     if (finished.data.kind === 'spring-return') {
       suspended = null;
       const last = finished.path.at(1 - .012 / finished.path.length);
@@ -212,13 +226,14 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     finished.resolve(true);
   }
   function goTo(to, { instant = false, directGate = false, power = null } = {}) {
-    if (disposed || !Object.hasOwn(layout.anchors, to)) return Promise.resolve(false);
+    if (disposed || !destinations.has(to)) return Promise.resolve(false);
     if (trip?.data.to === to) {
       const pending = trip.promise;
       if (instant) arrive();
       return pending;
     }
     if (state.station === to && !trip) return Promise.resolve(true);
+    if (isReaderStation(to)) { bankAwardLit = false; state.readerPage = to; }
     const spring = power !== null;
     if (!spring && state.mode === 'station-pulling') cancelPull();
     const from = state.station;
@@ -241,12 +256,13 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     const exitSpeed = spring ? .65 + power * 1.15 : 1.22;
     const velocity = suspended?.dynamic?.velocity;
     const entrySpeed = directGate && velocity ? clamp(Math.hypot(velocity.x, velocity.z), .65, 2.3) : 1.3;
-    const speed = spring ? 1.02 + power * .86 : atCradle ? 2.55 : entrySpeed;
-    trip = { ...plan, data, speed, distance: 0, exitSpeed, resolve, promise, instant,
+    const readerReturn = spring && isReaderStation(from);
+    const launchSpeed = readerReturn ? .14 + .12 * power : 1.02 + power * .86;
+    const speed = spring ? launchSpeed : atCradle ? 2.55 : entrySpeed;
+    trip = { ...plan, data, speed, distance: 0, exitSpeed, readerReturn, resolve, promise, instant,
       soundedGate: false, flipped: false, pulse: 0, startY: state.ball.y };
     state.travel = data;
-    state.gates.projects = to === 'projects';
-    state.gates.experience = to === 'experience';
+    for (const id of Object.keys(state.gates)) state.gates[id] = id === stationTrack(to);
     mode('travel');
     if (instant || path.length < .0001) arrive();
     else if (atCradle) sound('launch', .62);
@@ -264,14 +280,17 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     return true;
   }
   function gateHit(id) {
+    const destination = id === 'reader' ? state.readerPage : id;
+    if (!destination) return;
     if (elapsed - (lastImpact.get(id) ?? -Infinity) < 0.42) return;
     lastImpact.set(id, elapsed);
+    if (id === 'reader') bankAwardLit = false;
     score(250);
-    emit('hit', { station: id, score: state.score });
+    emit('hit', { station: destination, score: state.score });
     if (state.explore) {
-      goTo(id, { directGate: true });
+      goTo(destination, { directGate: true });
     } else {
-      const g = layout.gates[id], [dx, dz] = g.direction;
+      const [dx, dz] = ROOM_GATES[id].direction;
       const p = state.ball;
       field.setBall({ x: p.x - dx * 0.03, y: p.y, z: p.z - dz * 0.03 }, { x: -dx * 0.85, y: 0, z: -dz * 0.85 });
       sound('gate');
@@ -301,7 +320,13 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
       // then feed it through the governor over the last few ball lengths.
       wanted = Math.min(2.22, Math.sqrt(wanted * wanted + 8.4 * (gateDistance - distance)));
     }
-    if (spring && remaining < .28) {
+    if (trip.readerReturn) {
+      // This short collector has an escapement at the cup. The release
+      // rail then accelerates the ball to its exact playable exit speed.
+      const governed = .4 + .05 * trip.exitSpeed;
+      const runout = clamp(1 - remaining / .34);
+      wanted = Math.sqrt(governed ** 2 + runout * (trip.exitSpeed ** 2 - governed ** 2));
+    } else if (spring && remaining < .28) {
       const mix = remaining / .28;
       wanted = trip.exitSpeed + (wanted - trip.exitSpeed) * mix;
     } else if (!spring) {
@@ -354,6 +379,7 @@ export async function createRoomPhysics({ onEvent = () => {} } = {}) {
     }
     const previous = { ...state.ball };
     field.step(flippers);
+    mechanisms.captive=field.captiveTravel();
     place(field.position());
     const gate = crossedRoomGate(previous, state.ball);
     if (gate) gateHit(gate);

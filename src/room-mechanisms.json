@@ -21,6 +21,11 @@
     "posts": [[-0.057, -0.520], [0.071, -0.520]],
     "postRadius": 0.006
   },
+  "captive": {
+    "node": "Captive_Ball", "springNode": "Captive_Spring",
+    "x": 0.342, "z": 0.314, "radius": 0.023, "stroke": 0.083,
+    "rearAnchorZ": 0.187, "posts": [[0.310,0.252],[0.374,0.252]], "postRadius": 0.0055
+  },
   "rollovers": [
     { "id": "route-west", "node": "Rollover_West", "material": "rollover_west", "x": -0.142, "z": 0.365, "radius": 0.021 },
     { "id": "route-east", "node": "Rollover_East", "material": "rollover_east", "x": 0.075, "z": 0.366, "radius": 0.021 }

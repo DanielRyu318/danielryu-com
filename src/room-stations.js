@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { returnSpring } from './room-layout.js';
+import { createRoomIndex } from './room-index.js';
+import { indexStations } from './room-index-data.js';
 
 const entries = [
   {
@@ -153,6 +155,8 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
   const textures = [];
   const pickables = [];
   const returnUnits = new Map();
+  const reader = plungerParent && createRoomIndex(plungerParent);
+  if (reader) pickables.push(...reader.pickables);
   let selected = entries[0];
   let deposited = false;
   let awake = false;
@@ -182,8 +186,10 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
     const steel = new THREE.MeshStandardMaterial({ color: 0xdde2dc, roughness: .25, metalness: .87 });
     const grip = new THREE.MeshStandardMaterial({ color: 0x843b2f, roughness: .29, metalness: .18 });
     const hit = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-    for (const id of ['projects', 'experience']) {
-      const { origin, direction, stroke } = returnSpring(id);
+    for (const id of ['projects', 'experience', 'education']) {
+      const spring = returnSpring(id);
+      if (!spring) continue;
+      const { origin, direction, stroke } = spring;
       const action = 'return-' + id;
       const unit = new THREE.Group();
       unit.name = id + ' return spring';
@@ -192,6 +198,21 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
       plungerParent.add(unit);
       const slider = new THREE.Group();
       unit.add(slider);
+      if (id === 'education') {
+        // Left wing of the reader. The open saddle supports the ball below
+        // its equator and lets the striker pass straight through the lock.
+        add(unit,new THREE.BoxGeometry(.088,.024,.278),edge,[0,-.060,.045]);
+        for(const x of [-.021,.021]){
+          const bar=add(unit,new THREE.CylinderGeometry(.005,.005,.155,16),brass,[x,-.015,.028]);
+          bar.rotation.x=Math.PI/2;
+          add(unit,new THREE.BoxGeometry(.012,.038,.145),edge,[x,-.039,.028]);
+        }
+        for(const z of [-.064,.152]){
+          add(unit,new THREE.BoxGeometry(.057,.096,.017),brass,[0,-.070,z]);
+        }
+        const bushing=add(unit,new THREE.TorusGeometry(.017,.006,10,28),brass,[0,0,.153]);
+        bushing.name='Reader spring bearing';
+      }
 
       // All moving pieces share the ball's stroke. The rod passes through the
       // stationary model eyelet 153 mm behind the cup.
@@ -234,8 +255,9 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
       // Place the desk stamp beside the lamp and the archive stamp in front
       // of its linkage, within reach from either seated camera.
       if (id === 'projects') sign.position.set(-.075, -.077, .292);
-      else sign.position.set(-.145, -.016, .078);
-      const towardEye = id === 'projects' ? [-.97, -.22] : [-.15, .99];
+      else if (id === 'experience') sign.position.set(-.145, -.016, .078);
+      else sign.position.set(.080,-.043,.102);
+      const towardEye = id === 'projects' ? [-.97, -.22] : id === 'experience' ? [-.15, .99] : [0,1];
       sign.rotation.order = 'YXZ';
       sign.rotation.y = Math.atan2(...towardEye) - unit.rotation.y;
       sign.rotation.x = -Math.PI * .32;
@@ -315,6 +337,7 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
   }
   function drawScreen() { monitor.draw((ctx, w, h) => paintMonitor(ctx, w, h, awake, deposited)); }
   function getSummary() {
+    if (indexStations.includes(station)) return reader.getSummary();
     if (station === 'projects') {
       const reading = screenReading(deposited);
       return `Cline Financial sample account. Balance ${reading.balance}. Time-weighted return ${reading.rate}. ${deposited ? 'The $500 deposit is included.' : 'The account started at $1,000 and earned $100.'}`;
@@ -325,10 +348,15 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
   function setStation(id) {
     for (const action of returnUnits.keys()) setReturnPull(action, 0);
     station = id;
+    reader?.setStation(id);
+    if(indexStations.includes(id))returnUnits.get('return-education')?.unit.traverse(obj=>{
+      if(obj.userData.action)obj.userData.action='return-'+id;
+    });
     if (id === 'projects' && !awake) { awake = true; drawScreen(); }
     return getSummary();
   }
   function getControls() {
+    if (indexStations.includes(station)) return reader.getControls();
     if (station === 'projects') return [
       { action: 'deposit', label: deposited ? 'Reset sample' : 'Add $500 deposit' },
       { action: 'experience', label: 'To Experience' },
@@ -341,6 +369,7 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
     return [];
   }
   function activate(action) {
+    if(indexStations.includes(station))return reader.activate(action);
     if (action === 'return-' + station && returnUnits.has(action)) {
       return { navigate: 'table', sound: 'launch', announcement: 'Returning to the table' };
     }
@@ -359,14 +388,14 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
   drawScreen();
   resetPrint();
   function setReturnPull(action, fraction) {
-    const spring = returnUnits.get(action);
+    const spring = unitFor(action);
     if (!spring) return;
     const pull = THREE.MathUtils.clamp(Number.isFinite(fraction) ? fraction : 0, 0, 1);
     spring.coil.morphTargetInfluences[0] = pull;
     spring.slider.position.z = spring.stroke * pull;
   }
   function returnPullAxis(action) {
-    const spring = returnUnits.get(action);
+    const spring = unitFor(action);
     if (!spring) return null;
     return {
       start: spring.unit.localToWorld(new THREE.Vector3(0, 0, .20)),
@@ -374,11 +403,18 @@ export function createRoomStations({ screen, archive, switchAnchor, plungerParen
     };
   }
   function actionPosition(action) {
-    return returnUnits.get(action)?.handle.getWorldPosition(new THREE.Vector3()) ?? null;
+    return unitFor(action)?.handle.getWorldPosition(new THREE.Vector3())
+      ?? (indexStations.includes(station)?reader?.actionPosition(action):null);
+  }
+  function unitFor(action) {
+    const shared=indexStations.some(id=>action==='return-'+id);
+    return returnUnits.get(shared?'return-education':action);
   }
   return {
     pickables, setStation, getControls, getSummary, activate, setReturnPull, returnPullAxis, actionPosition,
+    update:()=>reader?.update(),
     dispose() {
+      reader?.dispose();
       for (const mesh of owned) { mesh.removeFromParent(); mesh.geometry.dispose(); }
       for (const face of textures) face.dispose();
       for (const material of materials) material.dispose();
